@@ -1,4 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Derived from TART (https://github.com/facebookresearch/tart), CC BY-NC 4.0.
+# This adapted AutoRAG version is redistributed by RAG-Stack; see LICENSE.tart and NOTICE.
 
 from typing import Any, Dict, List, Optional
 

@@ -23,8 +23,31 @@ commands below are for developing the submodule in that host environment.
 
 ## Installation
 
-Use Python 3.10 or newer and install exactly one CUDA stack when local GPU
-models or measured evaluation are required:
+Compatibility for this release is explicit:
+
+| Evaluator | Required host |
+| --- | --- |
+| `rag-stack-evaluator==0.0.1` | [`RAG-Stack==0.0.1`](https://github.com/haiqiang-zhang/rag-stack) source checkout containing the `RAG-Stack-Evaluator` submodule integration |
+
+The evaluator wheel deliberately does not declare the host as a dependency,
+because the host in turn pins this evaluator as a submodule/workspace member.
+Installing this repository alone can therefore build successfully but cannot
+import the evaluator's host-owned contracts. From a compatible host revision,
+use the host-root installation flow:
+
+```bash
+git clone --recurse-submodules https://github.com/haiqiang-zhang/rag-stack.git
+cd rag-stack
+# If needed, check out a host revision that pins
+# `rag-stack-evaluator==0.0.1`; it may not yet be the default branch.
+# Create and activate the conda environment as documented by the host first.
+uv pip install -e 'RAG-Stack-Evaluator[cu12]' -e '.[cu12]'
+# On NVIDIA driver >=580, use cu13 in both editable requirements instead.
+```
+
+The commands below are only for developing this submodule after the compatible
+host is already installed. Use Python 3.10 or newer and install exactly one
+CUDA stack when local GPU models or measured evaluation are required:
 
 ```bash
 # API/CPU components; add `faiss` unless faiss-cpu 1.14.1 is already present.
@@ -40,9 +63,48 @@ uv pip install -e '.[cu13,faiss]'
 Do not install the `cu12` and `cu13` extras together. Native benchmark
 environments may provide `faiss-cpu=1.14.1` through conda and omit the `faiss`
 extra. The supported integration checks this repository out as the
-`RAG-Stack-Evaluator` submodule and installs it through the parent workspace,
-so the host's shared `rag_stack` contracts and this namespace package are
-available together.
+`RAG-Stack-Evaluator` submodule and installs both local projects as editable
+distributions (or resolves them through the parent workspace), so the host's
+shared `rag_stack` contracts and this namespace package are available together.
+
+## Network safety
+
+The retained vLLM launch tools default to `0.0.0.0` for compatibility with
+existing benchmark hosts. The multi-model gateway has no authentication layer.
+Do not expose either service to an untrusted network. For local use, bind
+explicitly to loopback:
+
+```bash
+JUDGE_HOST=127.0.0.1 \
+  bash scripts/start_vllm_judge_server.sh
+
+python scripts/vllm_multimodel_gateway.py \
+  --host 127.0.0.1 --port 8000 \
+  --backend MODEL=http://127.0.0.1:8101
+```
+
+For remote use, restrict access with the host firewall or an authenticated
+reverse proxy. A vLLM API key can be passed as an extra server argument (for
+example `-- --api-key "$JUDGE_API_KEY"`), but this does not add authentication
+to the gateway itself.
+
+## Tests
+
+Run evaluator tests from an initialized compatible host checkout so the shared
+`rag_stack.*` contracts are present. A lightweight, non-GPU check is:
+
+```bash
+uv pip install -e 'RAG-Stack-Evaluator[test,faiss]' -e .
+python -m pytest \
+  RAG-Stack-Evaluator/tests/test_vllm_multimodel_gateway.py \
+  tests/test_vllm_instrumentation_promotion.py \
+  tests/test_measured_log_suppression.py
+```
+
+The complete suite includes FAISS, model-backend, vLLM, and measured-runtime
+cases. Use `RAG-Stack-Evaluator[test,cu12,faiss]` or
+`RAG-Stack-Evaluator[test,cu13,faiss]` on a dedicated compatible GPU host; do
+not run hardware tests on a shared benchmark server.
 
 ## Input Contract v1
 
@@ -65,10 +127,12 @@ The evaluator does **not** accept an optimizer search space. Do not pass:
 - unresolved optional nodes or conditional parameters.
 
 Structural lists defined by this contract, such as `node_lines`, `nodes`,
-`metrics`, and device lists, remain lists. A node must use the singular
-`module` field and contain exactly one resolved `component`. Upstream search or
-optimization code is responsible for selecting an arm and resolving it before
-calling the evaluator.
+`modules`, `metrics`, and device lists, remain lists. Every node must use
+`modules` with exactly one mapping containing one resolved `component`.
+Although the quality-only parser also accepts singular `module`, the shared
+quality-and-measured contract does not: measured deployment consumes the
+single-item `modules` list. Upstream search or optimization code is responsible
+for selecting an arm and resolving it before calling the evaluator.
 
 A resolved quality configuration has this shape:
 
@@ -102,10 +166,23 @@ node_lines:
           metrics: []
           strategy: mean
         top_k: 4
-        module:
-          component: vectordb
-          vectordb: example_hnsw
-          ef_search: 64
+        modules:
+          - component: vectordb
+            vectordb: example_hnsw
+            ef_search: 64
+
+  - node_line_name: generation
+    nodes:
+      - stage: prompt_maker
+        modules:
+          - component: fstring
+            prompt: "Question: {query}\nContext: {retrieved_contents}\nAnswer:"
+      - stage: generator
+        modules:
+          - component: vllm
+            model: Qwen/Qwen2.5-1.5B-Instruct
+            max_tokens: 128
+            temperature: 0.0
 
 eval_backend_setting:
   metrics:
@@ -116,8 +193,8 @@ eval_backend_setting:
 
 The required top-level evaluator fields are:
 
-- `node_lines`: ordered pipeline lines, each with a stable `node_line_name` and
-  an ordered `nodes` list;
+- `node_lines`: ordered pipeline lines, each with a stable `node_line_name`, an
+  ordered `nodes` list, and exactly one concrete item in every node's `modules`;
 - `vectordb`: the concrete stores referenced by active retrieval nodes, or an
   empty list when the pipeline does not use a vector database;
 - `eval_backend_setting.metrics`: a list of metric names or metric mappings
@@ -157,11 +234,21 @@ The normal, pre-chunked corpus contains:
 | `doc_id` | string-compatible | Stable ID of the chunk. |
 | `contents` | `str` | Chunk text. |
 | `metadata` | `dict` | Chunk metadata. Missing navigation/timestamp keys are normalized. |
+| `start_end_idx` | pair of integers | Source-text offsets; also marks the corpus as already chunked. |
 
-A raw corpus supplied for evaluator-owned chunking contains `doc_id` and
-`contents`; the legacy text-column name `texts` is accepted. A raw corpus must
-not contain `start_end_idx`. A corpus carrying `start_end_idx` is treated as
-already chunked and must not be passed through another chunker.
+A raw corpus supplied through the RAG-Stack host's owner-managed dataset path
+contains `doc_id` and `contents`; the legacy text-column name `texts` is
+accepted. A raw corpus must not contain `start_end_idx`. A corpus carrying
+`start_end_idx` is treated as already chunked and must not be passed through
+another chunker.
+
+The direct path-based API in section 4 is intentionally narrower: it accepts a
+pre-chunked corpus and `corpus_runtime.chunker: {}`. A raw corpus or a non-empty
+runtime chunker needs the host-owned `DatasetManager(config=owner_config, ...)`
+path because a chunk-cache miss must derive fresh token statistics. Here
+`owner_config` is the host's full configuration document (including its corpus
+and pipeline definition), not the resolved runtime mapping passed to
+`evaluate`.
 
 The caller must keep `qid` and `doc_id` stable within one project. All input
 paths must identify Parquet files.
@@ -176,7 +263,6 @@ from rag_stack.static_rag_evaluator import StaticRAGEvaluatorQualityOnly
 
 dataset = DatasetManager(
     project_dir=project_dir,
-    config=resolved_pipeline_config,
     qa_data_path=qa_parquet,
     corpus_data_path=corpus_parquet,
 )
@@ -193,11 +279,20 @@ quality = evaluator.evaluate(
 )
 ```
 
+This direct, config-less `DatasetManager` form is for a pre-chunked corpus and
+requires `resolved_pipeline_config["corpus_runtime"]["chunker"] == {}`. The
+fully resolved runtime mapping belongs on `evaluate`. Passing that runtime
+mapping as `DatasetManager.config` is incorrect because a non-empty manager
+config is the host's full optimizer/configuration document used to derive
+cost-model token statistics, not the section 1 runtime shape. Use the
+owner-managed form described in section 3 for raw or dynamically chunked input.
+
 `resolved_pipeline_config` is the contract from section 1. `metrics_override`,
 when supplied, is a concrete list of metrics and changes scoring only.
-`on_trace_ready`, when supplied, is called with the same canonical quality
-trace envelope later returned under `quality["__execution_dag__"]`; hook
-failures are advisory and do not invalidate the quality run.
+`on_trace_ready`, when supplied and a recorded canonical trace is produced, is
+called with the same envelope later returned under
+`quality["__execution_dag__"]`; hook failures are advisory and do not invalidate
+the quality run.
 
 ### 5. MeasuredProvider and system_config
 
@@ -227,8 +322,13 @@ for the duration of the context. `selection` is `max_throughput` or
 `min_latency`. `n_queries=None` evaluates the full QA input; an integer selects
 the first N rows.
 
-`system_config` must be a single concrete deployment, not a design space. Its
-contract is:
+`system_config` must be a single concrete deployment, not a design space. The
+canonical producer is the compatible RAG-Stack host's
+`PerformanceContext.resolve_system_config(...)`; callers should pass through
+that complete result or a persisted JSON copy of it. It is not merely the
+`layout.engines` block. The following one-GPU generator fragment illustrates
+the required derived records (a real result contains equivalent records for
+every active performance stage):
 
 ```yaml
 batch_size_request: 4
@@ -251,20 +351,54 @@ vllm:
       max_num_seqs: 4
 
 layout:
+  total_gpu_slots: 1
+  min_total_gpu_slots: 1
+  max_total_gpu_slots: 1
+  performance_stage_order: [generator_prefill, generator_decode]
+  resource_groups:
+    - id: gpu:0
+      kind: gpu
+      devices: [cuda:0]
+      performance_stages: [generator_prefill, generator_decode]
+  performance_stages:
+    generator_prefill:
+      kind: gpu
+      resource: gpu:0
+      devices: [cuda:0]
+      num_chips: 1
+      engine: generator
+      role: prefill
+      tp: 1
+      pp: 1
+    generator_decode:
+      kind: gpu
+      resource: gpu:0
+      devices: [cuda:0]
+      num_chips: 1
+      engine: generator
+      role: decode
+      tp: 1
+      pp: 1
   engines:
     generator:
       pd_serving: collocated_pd
       devices: [cuda:0]
       num_chips: 1
+      performance_stages: [generator_prefill, generator_decode]
       tp: 1
       pp: 1
+  gpu_occupants:
+    cuda:0: [generator_prefill, generator_decode]
 ```
 
-Every active GPU stage must be assigned to concrete devices. A disaggregated
-generator additionally supplies concrete `generator_prefill` and
-`generator_decode` role mappings under its engine, each with `devices`,
-`num_chips`, `tp`, and `pp`. Counts, batching settings, cache dtype, placement,
-and parallelism must not contain optimizer choices.
+The complete `layout` must include `total_gpu_slots`, ordered performance-stage
+records, resource groups, engine projections, and GPU occupants that agree with
+one another. Every active GPU stage must be assigned to concrete devices. A
+disaggregated generator additionally supplies concrete `generator_prefill` and
+`generator_decode` role mappings under `layout.engines.generator`, each with
+`devices`, `num_chips`, `tp`, and `pp`. Counts, batching settings, cache dtype,
+placement, and parallelism must not contain optimizer choices. Missing derived
+layout records are invalid input rather than defaults.
 
 `MeasuredProvider` must be used as a context manager. Calling `evaluate`
 outside its context is an error.
@@ -301,7 +435,15 @@ under `project_dir`:
 - `data/` for the resume-bound QA/corpus and canonical raw corpus;
 - `resources/` for vector indexes and reusable resources;
 - the caller-selected `run_dir`, or `_static_run/` when none is supplied; and
-- evaluator-managed cache/artifact files below those locations.
+- run-specific evaluator artifacts below those locations.
+
+Content-addressed embedding and FAISS caches are separate from `project_dir`.
+In the supported host integration, `rag_stack` sets `RAG_STACK_CACHE_DIR` to
+`<host-checkout>/.cache/rag_stack`. Without that bootstrap, the fallback is
+derived from the installed evaluator source location, which may be unwritable
+for a non-editable wheel. Set `RAG_STACK_CACHE_DIR` explicitly to a writable
+shared cache root in that case. The legacy `RAG_STACK_EMBED_CACHE` override, when
+set, still takes precedence for embedding vectors only.
 
 Once `project_dir/data/` is populated, subsequent runs reuse that bound dataset
 for resume safety; changing the input path does not silently replace it. Use a
@@ -310,12 +452,16 @@ new project directory for different data.
 Measured mode may set process-level runtime defaults, load in-process GPU
 models, launch vLLM process groups, open local service ports, and write
 diagnostics. Entering `MeasuredProvider` reclaims evaluator-owned orphaned vLLM
-processes. Its run-spanning cache may reuse a matching vLLM deployment across
-calls; replacing a deployment and leaving the context release evaluator-owned
-processes and cached models. The caller must not concurrently assign the same
-GPU devices or project directory to another measured provider.
+processes. Every `evaluate` call tears down all vLLM processes it launched,
+whether the call succeeds or fails; leaving the context also releases cached
+in-process models. The caller must not concurrently assign the same GPU devices
+or project directory to another measured provider.
 
 ## License and attribution
 
-This project includes code derived from AutoRAG. See `LICENSE.autorag` and
-`NOTICE` for the Apache License 2.0 terms and required attribution.
+Most redistributed derived code is under Apache License 2.0; see
+`LICENSE.autorag` and `NOTICE` for AutoRAG attribution. Two bundled TART model
+and tokenizer implementation files are under CC BY-NC 4.0; see `LICENSE.tart`
+and `NOTICE`. That TART-derived portion is restricted to non-commercial use, so
+the combined distribution is not Apache-only and is not suitable for commercial
+use without replacing those files or obtaining separate permission.

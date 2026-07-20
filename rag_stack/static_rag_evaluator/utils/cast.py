@@ -1,3 +1,6 @@
+# Portions derived from AutoRAG (https://github.com/Marker-Inc-Korea/AutoRAG), Apache-2.0.
+# Modified by the RAG-Stack authors for namespace and runtime integration; see LICENSE.autorag and NOTICE.
+
 # EXACT unsuffixed result-column names a retrieval-side node overwrites. The
 # `_semantic` / `_lexical` provenance variants are deliberately NOT listed: they
 # carry pre-rerank / per-arm retriever output that downstream consumers depend

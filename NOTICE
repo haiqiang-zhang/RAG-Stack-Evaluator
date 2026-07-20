@@ -6,3 +6,16 @@ Licensed under the Apache License, Version 2.0
 
 Parts of this project are derived from AutoRAG with modifications.
 See LICENSE.autorag for the full license text.
+
+The following files contain modified code from TART
+(https://github.com/facebookresearch/tart):
+
+  rag_stack/static_rag_evaluator/nodes/passagereranker/tart/modeling_enc_t5.py
+  rag_stack/static_rag_evaluator/nodes/passagereranker/tart/tokenization_enc_t5.py
+
+Copyright (c) Facebook, Inc. and its affiliates.
+Licensed under the Creative Commons Attribution-NonCommercial 4.0
+International Public License (CC BY-NC 4.0). See LICENSE.tart. These files
+were adapted by AutoRAG. RAG-Stack further modified the modeling file for
+optional dependency loading and runtime integration; changes to the tokenizer
+are limited to the redistribution notice and package placement.

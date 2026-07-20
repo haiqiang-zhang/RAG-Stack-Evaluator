@@ -1,4 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Derived from TART (https://github.com/facebookresearch/tart), CC BY-NC 4.0.
+# Adapted by AutoRAG and further modified by the RAG-Stack authors; see LICENSE.tart and NOTICE.
 
 import copy
 

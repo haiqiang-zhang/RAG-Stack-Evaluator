@@ -1,3 +1,6 @@
+# Portions derived from AutoRAG (https://github.com/Marker-Inc-Korea/AutoRAG), Apache-2.0.
+# Modified by the RAG-Stack authors for namespace and runtime integration; see LICENSE.autorag and NOTICE.
+
 """Content-based retrieval metrics.
 
 These compare retrieved chunk text against GT chunk text via token-level F1

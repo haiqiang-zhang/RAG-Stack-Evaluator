@@ -1,3 +1,6 @@
+# Portions derived from AutoRAG (https://github.com/Marker-Inc-Korea/AutoRAG), Apache-2.0.
+# Modified by the RAG-Stack authors for namespace and runtime integration; see LICENSE.autorag and NOTICE.
+
 from io import BytesIO
 import logging
 from typing import Any, Dict, List, Optional, Union
