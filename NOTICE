@@ -1,0 +1,8 @@
+This project contains modified code from the following open source project:
+
+AutoRAG (https://github.com/Marker-Inc-Korea/AutoRAG)
+Copyright 2023 Marker-Inc-Korea
+Licensed under the Apache License, Version 2.0
+
+Parts of this project are derived from AutoRAG with modifications.
+See LICENSE.autorag for the full license text.

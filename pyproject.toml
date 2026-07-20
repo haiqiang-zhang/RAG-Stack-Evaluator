@@ -1,0 +1,204 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rag-stack-evaluator"
+version = "0.0.1"
+description = "Static quality and measured-performance evaluator for RAG-Stack"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE.autorag" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+]
+
+# Dependency-pinning policy
+# -------------------------
+# 1. CUDA-independent application dependencies are exact pins.
+# 2. Packages in the torch/vLLM dependency tree use compatible floors; exact
+#    pins here would fight the stack-specific versions selected by vLLM.
+# 3. The transformers ecosystem also uses floors because each vLLM release
+#    constrains its compatible transformer stack.
+# 4. torch, vLLM, NIXL, FlashInfer, and CUDA toolkit packages are selected by
+#    the gpu/cu12/cu13 extras below. Install exactly one CUDA extra.
+dependencies = [
+    # Tier 2: shared framework dependencies in the torch/vLLM tree.
+    "numpy>=2.0,<3",
+    "pydantic>=2.9.2",
+    "aiohttp>=3.12.13",
+    "fastapi>=0.115.13",
+    "pyyaml>=6.0.2",
+    "tqdm>=4.67.1",
+    "rich>=14.0.0",
+    "click>=8.2.1",
+    "networkx>=2.5",
+    "grpcio>=1.66.2",
+    "grpcio-health-checking>=1.66.2,<1.68.0",
+    "grpcio-status>=1.66.2,<1.68.0",
+    "grpcio-tools>=1.66.2,<1.68.0",
+    "anyio>=4.13.0",
+    "huggingface-hub>=0.36.2",
+
+    # Tier 1: CUDA-independent evaluator dependencies.
+    "pandas==2.3.3",
+    "pyarrow==23.0.1",
+    "tiktoken==0.13.0",
+    "openai==2.24.0",
+    "rank-bm25==0.2.2",
+    "pysbd==0.3.4",
+    "fastparquet==2025.12.0",
+    "sacrebleu==2.6.0",
+    "evaluate==0.4.6",
+    "rouge-score==0.1.2",
+    "deepeval==3.9.5",
+    "cohere==5.20.7",
+    "tokenlog==0.0.3",
+    "voyageai==0.3.3",
+    "mixedbread-ai==2.2.6",
+    "emoji==2.15.0",
+    "banks==2.4.1",
+    "datasets==4.7.0",
+    "nltk==3.9.3",
+    "pillow==12.2.0",
+    "requests==2.34.2",
+    "httpx==0.28.1",
+    "psutil==7.2.2",
+    "nvidia-ml-py==13.595.45",
+    "tenacity==8.5.0",
+    "scikit-learn==1.8.0",
+    "uvicorn==0.47.0",
+
+    # Vector database clients.
+    "pymilvus==2.6.10",
+    "chromadb==1.5.5",
+    "weaviate-client==4.20.4",
+    "pinecone[grpc]==8.0.0",
+    "couchbase==4.5.0",
+    "qdrant-client==1.17.1",
+
+    # LlamaIndex backends imported by evaluator components.
+    "llama-index==0.14.16",
+    "llama-index-core==0.14.17",
+    "llama-index-embeddings-openai==0.5.2",
+    "llama-index-embeddings-ollama==0.9.0",
+    "llama-index-embeddings-openai-like==0.3.0",
+    "llama-index-llms-openai==0.6.26",
+    "llama-index-llms-openai-like==0.6.0",
+    "llama-index-llms-openrouter==0.5.0",
+    "llama-index-llms-bedrock==0.5.0",
+    "llama-index-instrumentation==0.5.0",
+
+    # Chunking and optional CPU reranker implementations.
+    "langchain-text-splitters==1.1.2",
+    "optimum[openvino,nncf]==2.1.0",
+]
+
+[project.optional-dependencies]
+# FAISS stays explicit because native deployments may prefer the matching
+# conda package. The evaluator imports `faiss`; install this extra unless the
+# environment already provides faiss-cpu 1.14.1.
+faiss = ["faiss-cpu==1.14.1"]
+
+ko = ["kiwipiepy==0.21.1", "konlpy==0.6.0"]
+ja = ["sudachipy==0.6.8", "sudachidict_core"]
+parse = [
+    "PyMuPDF==1.26.1",
+    "pdfminer.six==20250506",
+    "pdfplumber==0.11.7",
+    "jq==1.9.1",
+    "unstructured[pdf]==0.17.2",
+    "PyPDF2==2.12.1",
+    "pdf2image==1.17.0",
+]
+test = ["pytest==9.0.2", "pytest-asyncio==1.3.0"]
+
+# Driver-independent GPU functionality. torch's CUDA wheel is selected by
+# [tool.uv] below; the selected vLLM extra constrains its exact compatible
+# version. The transformers family therefore uses floors.
+gpu = [
+    "torch>=2.7.1",
+    "sentencepiece==0.2.1",
+    "bert-score==0.3.13",
+    "onnxruntime==1.24.3",
+    "llmlingua==0.2.2",
+    "transformers>=4.51.3",
+    "tokenizers>=0.21",
+    "sentence-transformers>=4.1.0",
+    "FlagEmbedding>=1.2.11",
+    "peft>=0.15.2",
+    "llama-index-llms-ollama>=0.6.0",
+    "llama-index-embeddings-huggingface>=0.5.4",
+    "llama-index-llms-huggingface>=0.5.0",
+    "llama-index-llms-vllm>=0.7.0",
+    "genz_llm==0.0.16",
+    "prometheus-client==0.25.0",
+    "starlette>=0.52.1",
+    "uvloop==0.22.1; platform_system != 'Windows'",
+]
+
+# Install exactly one CUDA stack. cu12 targets NVIDIA drivers 525-579; cu13
+# targets drivers >=580. These are the measured-runtime compatibility pins.
+cu12 = [
+    "rag-stack-evaluator[gpu]",
+    "vllm==0.18.1",
+    "flashinfer-python==0.6.6",
+    "nixl==1.2.0",
+    "nixl-cu12==1.2.0",
+]
+cu13 = [
+    "rag-stack-evaluator[gpu]",
+    "vllm==0.22.1",
+    "nixl==1.2.0",
+    "nixl-cu13==1.2.0",
+    "cuda-toolkit==13.0.2",
+    "nvidia-cuda-cccl==13.0.85.*",
+    "nvidia-cuda-crt==13.0.88.*",
+    "nvidia-cuda-nvcc==13.0.88.*",
+    "nvidia-nvvm==13.0.88.*",
+]
+
+# `all` follows the current cu13 default. On a driver below 580, install
+# `.[cu12,faiss,ko,ja,parse]` explicitly instead.
+all = [
+    "rag-stack-evaluator[cu13]",
+    "rag-stack-evaluator[faiss]",
+    "rag-stack-evaluator[ko]",
+    "rag-stack-evaluator[ja]",
+    "rag-stack-evaluator[parse]",
+]
+
+[project.urls]
+Repository = "https://github.com/haiqiang-zhang/RAG-Stack-Evaluator"
+
+[tool.hatch.build]
+exclude = [
+    "**/__pycache__",
+    "**/*.pyc",
+    ".git",
+]
+
+[tool.hatch.build.targets.wheel]
+# `rag_stack` is intentionally a PEP 420 namespace package: this repository
+# must not add rag_stack/__init__.py.
+packages = ["rag_stack"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/rag_stack",
+    "/scripts",
+    "/tests",
+    "/LICENSE.autorag",
+    "/NOTICE",
+    "/README.md",
+    "/pyproject.toml",
+]
+
+[tool.uv]
+# uv selects the torch CUDA wheel from the host driver. The cu12/cu13 extra
+# selects the matching vLLM/NIXL/toolkit stack.
+torch-backend = "auto"

@@ -1,0 +1,42 @@
+# Python bytecode and native build products
+__pycache__/
+*.py[cod]
+*.so
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments and local environment files
+.venv/
+venv/
+.env
+.env.*
+.python-version
+
+# Test, type-checker, and coverage caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+
+# Model/tool caches and evaluator runtime artifacts
+.cache/
+data/
+resources/
+_static_run/
+tmp_outputs/
+saved_outputs/
+*.log
+
+# Machine-local RAG-Stack settings and secrets
+.rag_stack_settings.json

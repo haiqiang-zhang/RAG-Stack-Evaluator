@@ -1,0 +1,112 @@
+import logging
+import os
+from typing import List, Dict
+
+import pandas as pd
+
+from rag_stack.static_rag_evaluator.nodes.retrieval.run_util import evaluate_retrieval_node
+from rag_stack.static_rag_evaluator.schema.metricinput import MetricInput
+from rag_stack.static_rag_evaluator.strategy import measure_speed
+from rag_stack.static_rag_evaluator.utils.cast import drop_retrieval_columns
+from rag_stack.static_rag_evaluator.utils.util import apply_recursive, to_list
+from rag_stack.security import safe_dataframe_to_csv
+
+logger = logging.getLogger("RAG-Stack")
+
+
+def run_passage_reranker_node(
+	modules: List,
+	module_params: List[Dict],
+	previous_result: pd.DataFrame,
+	node_line_dir: str,
+	strategies: Dict,
+) -> pd.DataFrame:
+	"""
+	Run the single passage reranker module supplied by the upstream sampler.
+
+	Greedy multi-module selection has been removed. Exactly one module is expected.
+	"""
+	if len(modules) != 1:
+		raise ValueError(
+			f"passage_reranker expects exactly one module after sampling, "
+			f"got {len(modules)}"
+		)
+	module = modules[0]
+	module_param = module_params[0]
+
+	if not os.path.exists(node_line_dir):
+		os.makedirs(node_line_dir)
+	project_dir = os.environ["PROJECT_DIR"]
+	qa_df = pd.read_parquet(
+		os.path.join(project_dir, "data", "qa.parquet"), engine="pyarrow"
+	)
+	retrieval_gt_contents = qa_df["retrieval_gt_contents"].tolist()
+
+	metric_inputs = [
+		MetricInput(retrieval_gt_contents=ret_gt_c, query=query, generation_gt=gen_gt)
+		for ret_gt_c, query, gen_gt in zip(
+			retrieval_gt_contents, qa_df["query"].tolist(), qa_df["generation_gt"].tolist()
+		)
+	]
+
+	result, execution_time = measure_speed(
+		module.run_evaluator,
+		project_dir=project_dir,
+		previous_result=previous_result,
+		**module_param,
+	)
+	average_time = execution_time / len(result)
+
+	if strategies.get("metrics"):
+		result = evaluate_retrieval_node(result, metric_inputs, strategies.get("metrics"))
+
+	save_dir = os.path.join(node_line_dir, "passage_reranker")
+	if not os.path.exists(save_dir):
+		os.makedirs(save_dir)
+	filepath = os.path.join(save_dir, "0.parquet")
+	result.to_parquet(filepath, index=False)
+	filename = os.path.basename(filepath)
+
+	metric_names = strategies.get("metrics") or []
+	summary_df = pd.DataFrame(
+		{
+			"filename": [filename],
+			"module_name": [module.__name__],
+			"module_params": [module_param],
+			"execution_time": [average_time],
+			**{
+				f"passage_reranker_{metric}": [result[metric].mean()]
+				for metric in metric_names
+			},
+		}
+	)
+
+	result = result.rename(
+		columns={
+			metric_name: f"passage_reranker_{metric_name}"
+			for metric_name in metric_names
+		}
+	)
+	previous_result = drop_retrieval_columns(previous_result)
+	best_result = pd.concat([previous_result, result], axis=1)
+
+	safe_dataframe_to_csv(summary_df, os.path.join(save_dir, "summary.csv"), index=False)
+	best_result.to_parquet(
+		os.path.join(save_dir, f"best_{os.path.splitext(filename)[0]}.parquet"),
+		index=False,
+	)
+	# trace: rerank (cross-encoder over query × candidate passages) — one call/query.
+	if "__qid__" in best_result.columns:
+		from rag_stack.static_rag_evaluator import recording as _rec
+		_qids = best_result["__qid__"].tolist()
+		_q = (best_result["query"].astype(str).tolist()
+			  if "query" in best_result.columns else [""] * len(_qids))
+		_rc_col = next((c for c in ("retrieved_contents_semantic", "retrieved_contents")
+						if c in best_result.columns), None)
+		_rc = best_result[_rc_col].tolist() if _rc_col else [[]] * len(_qids)
+		_m = module_param.get("model") if isinstance(module_param, dict) else None
+		# input = query + candidate passages (what the cross-encoder ingests); out=0.
+		_in = [[q] + (rc if isinstance(rc, (list, tuple)) else [rc])
+			   for q, rc in zip(_q, _rc)]
+		_rec.record_io("passage_reranker", _qids, _in, model_id=_m)
+	return best_result
