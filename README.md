@@ -244,7 +244,8 @@ another chunker.
 
 The direct path-based API in section 4 is intentionally narrower: it accepts a
 pre-chunked corpus and `corpus_runtime.chunker: {}`. A raw corpus or a non-empty
-runtime chunker needs the host-owned `DatasetManager(config=owner_config, ...)`
+runtime chunker needs the host-owned
+`rag_stack.dataset_manager.DatasetManager(config=owner_config, ...)`
 path because a chunk-cache miss must derive fresh token statistics. Here
 `owner_config` is the host's full configuration document (including its corpus
 and pipeline definition), not the resolved runtime mapping passed to
@@ -258,10 +259,10 @@ paths must identify Parquet files.
 The stable path-based quality API is:
 
 ```python
-from rag_stack_evaluator.static_rag_evaluator.dataset import DatasetManager
+from rag_stack_evaluator.static_rag_evaluator import DatasetEvalManager
 from rag_stack_evaluator.static_rag_evaluator import StaticRAGEvaluatorQualityOnly
 
-dataset = DatasetManager(
+dataset = DatasetEvalManager(
     project_dir=project_dir,
     qa_data_path=qa_parquet,
     corpus_data_path=corpus_parquet,
@@ -279,10 +280,10 @@ quality = evaluator.evaluate(
 )
 ```
 
-This direct, config-less `DatasetManager` form is for a pre-chunked corpus and
+This direct, config-less `DatasetEvalManager` form is for a pre-chunked corpus and
 requires `resolved_pipeline_config["corpus_runtime"]["chunker"] == {}`. The
 fully resolved runtime mapping belongs on `evaluate`. Passing that runtime
-mapping as `DatasetManager.config` is incorrect because a non-empty manager
+mapping as `DatasetEvalManager.config` is incorrect because a non-empty manager
 config is the host's full optimizer/configuration document used to derive
 cost-model token statistics, not the section 1 runtime shape. Use the
 owner-managed form described in section 3 for raw or dynamically chunked input.

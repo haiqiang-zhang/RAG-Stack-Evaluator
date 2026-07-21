@@ -10,7 +10,7 @@ import pandas as pd
 import rag_stack.cost_model.token_stats as token_stats_module
 from rag_stack_evaluator.static_rag_evaluator import chunk_cache
 from rag_stack_evaluator.static_rag_evaluator import dataset as dataset_module
-from rag_stack_evaluator.static_rag_evaluator.dataset import DatasetManager
+from rag_stack_evaluator.static_rag_evaluator.dataset import DatasetEvalManager
 
 
 class _FakeTokenStats:
@@ -129,7 +129,7 @@ def test_fresh_project_builds_default_chunk_once_across_init_and_eval0(
     )
 
     project = tmp_path / "project"
-    manager = DatasetManager(
+    manager = DatasetEvalManager(
         project_dir=str(project),
         config=_config(),
         qa_data_path=str(qa_path),
@@ -165,7 +165,7 @@ def test_existing_complete_chunk_cache_hit_never_invokes_chunker(
         chunk_cache, "_run_chunker", _counting_chunker(calls),
     )
     project = tmp_path / "project"
-    DatasetManager(
+    DatasetEvalManager(
         project_dir=str(project),
         config=_config(),
         qa_data_path=str(qa_path),
@@ -177,7 +177,7 @@ def test_existing_complete_chunk_cache_hit_never_invokes_chunker(
         raise AssertionError("complete chunk cache unexpectedly rebuilt")
 
     monkeypatch.setattr(chunk_cache, "_run_chunker", forbidden_build)
-    resumed = DatasetManager(
+    resumed = DatasetEvalManager(
         project_dir=str(project),
         config=_config(),
         qa_data_path=str(qa_path),

@@ -1,10 +1,15 @@
-"""Single owner of the QA + corpus data lifecycle for a rag-stack project.
+"""Evaluation-side owner of the QA + corpus execution lifecycle.
 
-This module is the ONE place that manages datasets. It replaces the old
+This module is the evaluator's data plane. It replaces the old
 ``rag_stack.corpus_qa.CorpusQAManager`` and folds in the chunk cache (now
 ``rag_stack_evaluator.static_rag_evaluator.chunk_cache``) so that everything dataset-shaped
 lives under the static evaluator — you hand it a dataset + config (including the
 chunker), and it loads, validates, binds, chunks, and hands back a corpus view.
+
+RAG-Stack host callers construct ``rag_stack.dataset_manager.DatasetManager``;
+that host-facing class specializes this evaluator manager and owns the full
+RAG-Stack configuration boundary. Standalone evaluator callers construct
+``DatasetEvalManager`` directly with already resolved, pre-chunked data.
 
 Owns:
 
@@ -85,7 +90,7 @@ def get_active_corpus(project_dir: str) -> Optional[pd.DataFrame]:
 class CorpusView:
     """The chunked-corpus artifacts for a single evaluation.
 
-    Returned by :meth:`DatasetManager.resolve_corpus`. ``token_stats`` is
+    Returned by :meth:`DatasetEvalManager.resolve_corpus`. ``token_stats`` is
     ``None`` only on a dataset-only manager (no pipeline config to derive
     them from); ``n_vectors`` is the corpus row count (= number of FAISS
     vectors) for this chunking.
@@ -97,8 +102,8 @@ class CorpusView:
     n_vectors: int
 
 
-class DatasetManager:
-    """Owns the QA + corpus DataFrames, token stats, and per-eval chunking.
+class DatasetEvalManager:
+    """Own evaluator QA/corpus frames, artifacts, and per-eval chunking.
 
     Construction performs the resume-safe data binding: if the project
     already has a ``data/`` directory, supplied paths are ignored (with a
@@ -298,7 +303,7 @@ class DatasetManager:
         dataset: Any,
         project_dir: str,
         config: Optional[dict] = None,
-    ) -> "DatasetManager":
+    ) -> "DatasetEvalManager":
         """Build a manager directly from an in-memory ``GeneratedDataset``.
 
         Used by the static evaluator when no owner-supplied manager is passed
@@ -386,7 +391,7 @@ class DatasetManager:
         method = str(_first(chunker.get("component"), "recursivecharacter"))
         size = int(_first(chunker.get("chunk_size"), 512))
         overlap = int(_first(chunker.get("chunk_overlap"), 0))
-        # A file-backed, config-less DatasetManager deliberately owns no token
+        # A file-backed, config-less DatasetEvalManager deliberately owns no token
         # statistics. Preserve that uncommon standalone bootstrap path; the
         # optimizer/quality owner path always supplies a config and therefore
         # uses the canonical cache below.

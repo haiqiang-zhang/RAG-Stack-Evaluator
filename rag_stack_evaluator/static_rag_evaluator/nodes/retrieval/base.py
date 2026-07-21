@@ -27,7 +27,7 @@ class BaseRetrieval(BaseModule, metaclass=abc.ABCMeta):
 		# Corpus resolution order: an explicitly shared frame (hybrid passes
 		# its own corpus to the sub-retrievers it builds — without this each
 		# sub-module re-deserialized the parquet, 3x for one hybrid node in
-		# a spawned worker process) > the process-local DatasetManager
+		# a spawned worker process) > the process-local DatasetEvalManager
 		# frame > the disk parquet.
 		shared_corpus = kwargs.get("_shared_corpus_df")
 		if shared_corpus is not None:

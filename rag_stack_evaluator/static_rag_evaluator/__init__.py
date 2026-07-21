@@ -104,6 +104,7 @@ except Exception as _exc:  # noqa: BLE001
 
 
 # Public API exposed for baselines and cost-model-coupled callers.
+from rag_stack_evaluator.static_rag_evaluator.dataset import DatasetEvalManager
 from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
 	StaticRAGEvaluatorQualityOnly,
 )
@@ -119,6 +120,7 @@ from rag_stack_evaluator.static_rag_evaluator.measured import (
 )
 
 __all__ = [
+	"DatasetEvalManager",
 	"StaticRAGEvaluatorQualityOnly",
 	"ModelCache",
 	"FaissKey",

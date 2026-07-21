@@ -12,7 +12,7 @@ import rag_stack_evaluator.static_rag_evaluator.dataset as dataset_module
 import rag_stack_evaluator.static_rag_evaluator.nodes.retrieval.base as retrieval_base
 from rag_stack_evaluator.static_rag_evaluator.dataset import (
     CorpusView,
-    DatasetManager,
+    DatasetEvalManager,
     get_active_corpus,
     register_active_corpus,
 )
@@ -26,8 +26,8 @@ class _ConcreteRetrieval(retrieval_base.BaseRetrieval):
         return queries
 
 
-def _manager(project_dir: Path) -> DatasetManager:
-    manager = object.__new__(DatasetManager)
+def _manager(project_dir: Path) -> DatasetEvalManager:
+    manager = object.__new__(DatasetEvalManager)
     manager.project_dir = str(project_dir)
     manager.corpus_data = pd.DataFrame(
         {"doc_id": ["canonical"], "contents": ["canonical text"]}

@@ -180,20 +180,20 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 		Initialize a StaticRAGEvaluatorQualityOnly.
 
 		:param dataset: A GeneratedDataset containing QA and Corpus data. Used
-		    to build a standalone :class:`DatasetManager` when none is supplied.
+		    to build a standalone :class:`DatasetEvalManager` when none is supplied.
 		:param project_dir: Path to the project directory. Default is the current directory.
-		:param dataset_manager: optional shared :class:`DatasetManager` (owner
+		:param dataset_manager: optional shared :class:`DatasetEvalManager` (owner
 		    paths — Controller / QualityStore — pass theirs so the corpus and the
 		    chunk cache are the SAME instance the cost-model path queries). When
 		    omitted, one is built from ``dataset`` for standalone / test use.
 		"""
-		from rag_stack_evaluator.static_rag_evaluator.dataset import DatasetManager
+		from rag_stack_evaluator.static_rag_evaluator.dataset import DatasetEvalManager
 
 		if dataset_manager is not None:
 			self._dataset = dataset_manager
 		elif dataset is not None:
 			pdir = project_dir if project_dir is not None else os.getcwd()
-			self._dataset = DatasetManager.from_dataset(dataset, pdir)
+			self._dataset = DatasetEvalManager.from_dataset(dataset, pdir)
 		else:
 			raise ValueError(
 				"StaticRAGEvaluatorQualityOnly requires either a dataset or a dataset_manager."
@@ -405,7 +405,7 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 			# Resolve a relative IVF-PQ nlist_factor → concrete nlist now that
 			# this eval's chunk count is known, BEFORE path resolution so the
 			# cache subdir keys on the real nlist (mirrors the cost-model path's
-			# DatasetManager.apply_corpus_view). No-op for absolute-nlist configs.
+			# DatasetEvalManager.apply_corpus_view). No-op for absolute-nlist configs.
 			self._dataset.resolve_nlist_factor(vectordb_configs, corpus_view.n_vectors)
 			vectordb_configs = self._resolve_vectordb_paths(vectordb_configs, chunk_hash=chunk_hash)
 			# Propagate the build-time OMP knob (system.retrieval.
@@ -461,12 +461,12 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 			corpus_path = os.path.join(data_dir, "corpus.parquet")
 			if not os.path.exists(qa_path):
 				self.qa_data.to_parquet(qa_path, index=False)
-			# DatasetManager.activate() owns per-eval corpus materialization. Writing
+			# DatasetEvalManager.activate() owns per-eval corpus materialization. Writing
 			# the same 8.8M-row frame again here duplicated gigabytes of NFS I/O and
 			# changed only parquet encoding/mtime, not benchmark data.
 			if not os.path.isfile(corpus_path):
 				raise RuntimeError(
-					"DatasetManager.activate() did not materialize data/corpus.parquet"
+					"DatasetEvalManager.activate() did not materialize data/corpus.parquet"
 				)
 
 			# Create a run directory for execution artifacts
@@ -999,7 +999,7 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 			return
 		try:
 			# Explicit, mandatory dataset name (config dataset.dataset_name), shared
-			# via the DatasetManager — the SAME id the controller's _cm_corpus_id()
+			# via the DatasetEvalManager — the SAME id the controller's _cm_corpus_id()
 			# uses, so the load side finds this profile. Never path-derived.
 			dataset_name = getattr(self._dataset, "dataset_name", "") or ""
 			if not dataset_name:
