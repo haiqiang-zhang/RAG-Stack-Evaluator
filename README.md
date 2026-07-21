@@ -106,11 +106,11 @@ cases. Use `RAG-Stack-Evaluator[test,cu12,faiss]` or
 `RAG-Stack-Evaluator[test,cu13,faiss]` on a dedicated compatible GPU host; do
 not run hardware tests on a shared benchmark server.
 
-## Input Contract v1
+## Input Contract
 
-This section is the public, versioned boundary of the evaluator. Changes that
-break it require a new major contract version. Inputs outside this contract are
-caller errors even if a particular implementation happens to accept them.
+This section defines the evaluator's single public input contract. Inputs
+outside this contract are caller errors even if a particular implementation
+happens to accept them.
 
 ### 1. Resolved pipeline config only
 
