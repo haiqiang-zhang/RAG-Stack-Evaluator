@@ -134,61 +134,86 @@ quality-and-measured contract does not: measured deployment consumes the
 single-item `modules` list. Upstream search or optimization code is responsible
 for selecting an arm and resolving it before calling the evaluator.
 
-A resolved quality configuration has this shape:
+A caller passes the resolved configuration as an in-memory Python `dict`. The
+core API does not accept a YAML path, YAML file, or YAML string:
 
-```yaml
-dataset:
-  dataset_name: example
+```python
+resolved_pipeline_config = {
+    "dataset": {"dataset_name": "example"},
+    "corpus_runtime": {"chunker": {}},
+    "pipeline_runtime": {"mode": "sequential"},
+    "vectordb": [
+        {
+            "name": "example_hnsw",
+            "db_type": "faiss_hnsw",
+            "embedding_model": "mock",
+            "embedding_dim": 768,
+            "collection_name": "example",
+            "path": "/absolute/path/to/project/resources/faiss",
+            "similarity_metric": "cosine",
+            "M": 32,
+            "ef_construction": 200,
+            "ef_search": 64,
+        },
+    ],
+    "node_lines": [
+        {
+            "node_line_name": "retrieval",
+            "nodes": [
+                {
+                    "stage": "semantic_retrieval",
+                    "strategy": {"metrics": [], "strategy": "mean"},
+                    "top_k": 4,
+                    "modules": [
+                        {
+                            "component": "vectordb",
+                            "vectordb": "example_hnsw",
+                            "ef_search": 64,
+                        },
+                    ],
+                },
+            ],
+        },
+        {
+            "node_line_name": "generation",
+            "nodes": [
+                {
+                    "stage": "prompt_maker",
+                    "modules": [
+                        {
+                            "component": "fstring",
+                            "prompt": (
+                                "Question: {query}\n"
+                                "Context: {retrieved_contents}\n"
+                                "Answer:"
+                            ),
+                        },
+                    ],
+                },
+                {
+                    "stage": "generator",
+                    "modules": [
+                        {
+                            "component": "vllm",
+                            "model": "Qwen/Qwen2.5-1.5B-Instruct",
+                            "max_tokens": 128,
+                            "temperature": 0.0,
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+    "eval_backend_setting": {
+        "metrics": [
+            {"metric_name": "retrieval_token_recall"},
+            {"metric_name": "retrieval_token_precision"},
+            {"metric_name": "retrieval_token_f1"},
+        ],
+    },
+}
 
-corpus_runtime:
-  chunker: {}
-
-pipeline_runtime:
-  mode: sequential
-
-vectordb:
-  - name: example_hnsw
-    db_type: faiss_hnsw
-    embedding_model: mock
-    embedding_dim: 768
-    collection_name: example
-    path: /absolute/path/to/project/resources/faiss
-    similarity_metric: cosine
-    M: 32
-    ef_construction: 200
-    ef_search: 64
-
-node_lines:
-  - node_line_name: retrieval
-    nodes:
-      - stage: semantic_retrieval
-        strategy:
-          metrics: []
-          strategy: mean
-        top_k: 4
-        modules:
-          - component: vectordb
-            vectordb: example_hnsw
-            ef_search: 64
-
-  - node_line_name: generation
-    nodes:
-      - stage: prompt_maker
-        modules:
-          - component: fstring
-            prompt: "Question: {query}\nContext: {retrieved_contents}\nAnswer:"
-      - stage: generator
-        modules:
-          - component: vllm
-            model: Qwen/Qwen2.5-1.5B-Instruct
-            max_tokens: 128
-            temperature: 0.0
-
-eval_backend_setting:
-  metrics:
-    - metric_name: retrieval_token_recall
-    - metric_name: retrieval_token_precision
-    - metric_name: retrieval_token_f1
+quality = evaluator.evaluate(resolved_pipeline_config)
 ```
 
 The required top-level evaluator fields are:
@@ -327,69 +352,85 @@ the first N rows.
 canonical producer is the compatible RAG-Stack host's
 `PerformanceContext.resolve_system_config(...)`; callers should pass through
 that complete result or a persisted JSON copy of it. It is not merely the
-`layout.engines` block. The following one-GPU generator fragment illustrates
-the required derived records (a real result contains equivalent records for
-every active performance stage):
+`layout.engines` block. The following in-memory Python `dict` fragment
+illustrates the required derived records for a one-GPU generator. A real result
+contains equivalent records for every active performance stage:
 
-```yaml
-batch_size_request: 4
-measured_load_concurrency: 4
-measured_warmup_queries: 4
-measured_queries: 16
-
-batching:
-  dynamic_timeout_s: 0.0
-
-retrieval:
-  faiss_num_threads: 1
-  faiss_ivf_parallel_mode: 0
-  num_servers: 1
-
-vllm:
-  kv_cache_dtype: auto
-  engines:
-    generator:
-      max_num_seqs: 4
-
-layout:
-  total_gpu_slots: 1
-  min_total_gpu_slots: 1
-  max_total_gpu_slots: 1
-  performance_stage_order: [generator_prefill, generator_decode]
-  resource_groups:
-    - id: gpu:0
-      kind: gpu
-      devices: [cuda:0]
-      performance_stages: [generator_prefill, generator_decode]
-  performance_stages:
-    generator_prefill:
-      kind: gpu
-      resource: gpu:0
-      devices: [cuda:0]
-      num_chips: 1
-      engine: generator
-      role: prefill
-      tp: 1
-      pp: 1
-    generator_decode:
-      kind: gpu
-      resource: gpu:0
-      devices: [cuda:0]
-      num_chips: 1
-      engine: generator
-      role: decode
-      tp: 1
-      pp: 1
-  engines:
-    generator:
-      pd_serving: collocated_pd
-      devices: [cuda:0]
-      num_chips: 1
-      performance_stages: [generator_prefill, generator_decode]
-      tp: 1
-      pp: 1
-  gpu_occupants:
-    cuda:0: [generator_prefill, generator_decode]
+```python
+system_config = {
+    "batch_size_request": 4,
+    "measured_load_concurrency": 4,
+    "measured_warmup_queries": 4,
+    "measured_queries": 16,
+    "batching": {"dynamic_timeout_s": 0.0},
+    "retrieval": {
+        "faiss_num_threads": 1,
+        "faiss_ivf_parallel_mode": 0,
+        "num_servers": 1,
+    },
+    "vllm": {
+        "kv_cache_dtype": "auto",
+        "engines": {"generator": {"max_num_seqs": 4}},
+    },
+    "layout": {
+        "total_gpu_slots": 1,
+        "min_total_gpu_slots": 1,
+        "max_total_gpu_slots": 1,
+        "performance_stage_order": [
+            "generator_prefill",
+            "generator_decode",
+        ],
+        "resource_groups": [
+            {
+                "id": "gpu:0",
+                "kind": "gpu",
+                "devices": ["cuda:0"],
+                "performance_stages": [
+                    "generator_prefill",
+                    "generator_decode",
+                ],
+            },
+        ],
+        "performance_stages": {
+            "generator_prefill": {
+                "kind": "gpu",
+                "resource": "gpu:0",
+                "devices": ["cuda:0"],
+                "num_chips": 1,
+                "engine": "generator",
+                "role": "prefill",
+                "tp": 1,
+                "pp": 1,
+            },
+            "generator_decode": {
+                "kind": "gpu",
+                "resource": "gpu:0",
+                "devices": ["cuda:0"],
+                "num_chips": 1,
+                "engine": "generator",
+                "role": "decode",
+                "tp": 1,
+                "pp": 1,
+            },
+        },
+        "engines": {
+            "generator": {
+                "pd_serving": "collocated_pd",
+                "devices": ["cuda:0"],
+                "num_chips": 1,
+                "performance_stages": [
+                    "generator_prefill",
+                    "generator_decode",
+                ],
+                "tp": 1,
+                "pp": 1,
+            },
+        },
+        "gpu_occupants": {
+            "cuda:0": ["generator_prefill", "generator_decode"],
+        },
+    },
+}
 ```
 
 The complete `layout` must include `total_gpu_slots`, ordered performance-stage
