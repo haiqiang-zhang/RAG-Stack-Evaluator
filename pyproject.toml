@@ -191,6 +191,7 @@ packages = ["rag_stack_evaluator"]
 [tool.hatch.build.targets.sdist]
 include = [
     "/rag_stack_evaluator",
+    "/example",
     "/scripts",
     "/tests",
     "/LICENSE.autorag",
