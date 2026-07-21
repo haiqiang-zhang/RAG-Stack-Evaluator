@@ -106,12 +106,7 @@ cases. Use `RAG-Stack-Evaluator[test,cu12,faiss]` or
 `RAG-Stack-Evaluator[test,cu13,faiss]` on a dedicated compatible GPU host; do
 not run hardware tests on a shared benchmark server.
 
-## Examples
-
-The [`example/`](example/) directory contains self-contained offline examples
-for quality evaluation, metric overrides, and the canonical trace callback.
-Each example creates its own Parquet inputs and passes an in-memory Python
-`dict` to the evaluator.
+## [Examples](example/)
 
 ## Input Contract
 
