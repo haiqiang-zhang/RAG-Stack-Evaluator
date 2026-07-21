@@ -14,9 +14,9 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-from rag_stack.static_rag_evaluator import cache_paths
-from rag_stack.static_rag_evaluator import embedding_cache
-from rag_stack.static_rag_evaluator.static_rag_evaluator import (
+from rag_stack_evaluator.static_rag_evaluator import cache_paths
+from rag_stack_evaluator.static_rag_evaluator import embedding_cache
+from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
     StaticRAGEvaluatorQualityOnly as _E,
 )
 

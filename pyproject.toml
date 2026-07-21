@@ -184,13 +184,13 @@ exclude = [
 ]
 
 [tool.hatch.build.targets.wheel]
-# `rag_stack` is intentionally a PEP 420 namespace package: this repository
-# must not add rag_stack/__init__.py.
-packages = ["rag_stack"]
+# The evaluator owns a distinct top-level package. RAG-Stack remains a host
+# dependency consumed through its separate `rag_stack` package.
+packages = ["rag_stack_evaluator"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/rag_stack",
+    "/rag_stack_evaluator",
     "/scripts",
     "/tests",
     "/LICENSE.autorag",

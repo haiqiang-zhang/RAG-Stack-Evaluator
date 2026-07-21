@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from rag_stack.static_rag_evaluator.measured.aux_process import (  # noqa: E402
+from rag_stack_evaluator.static_rag_evaluator.measured.aux_process import (  # noqa: E402
     AUX_PROCESS_STAGES,
     RETRIEVAL_PROCESS_STAGES,
     AuxProcessStage,

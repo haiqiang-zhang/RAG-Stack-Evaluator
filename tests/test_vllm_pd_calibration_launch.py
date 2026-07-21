@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-import rag_stack.static_rag_evaluator.measured.vllm_pd_pair as pd_module
-from rag_stack.static_rag_evaluator.measured.vllm_pd_pair import (
+import rag_stack_evaluator.static_rag_evaluator.measured.vllm_pd_pair as pd_module
+from rag_stack_evaluator.static_rag_evaluator.measured.vllm_pd_pair import (
     VllmPdCalibrationTelemetry,
     VllmPdPair,
     VllmPdPairKey,
@@ -46,7 +46,7 @@ def _capture_launches(monkeypatch):
         lambda **_kwargs: None,
     )
     monkeypatch.setattr(
-        "rag_stack.static_rag_evaluator.measured.gpu_mem.effective_util",
+        "rag_stack_evaluator.static_rag_evaluator.measured.gpu_mem.effective_util",
         lambda _devices, requested, **_kwargs: float(requested),
     )
 
@@ -168,7 +168,7 @@ def test_calibration_launch_uses_role_telemetry_and_pd_safe_metrics(
         assert command[:3] == [
             pd_module.sys.executable,
             "-m",
-            "rag_stack.vllm_instrumentation.serving_curves.calibration.vllm_server",
+            "rag_stack_evaluator.vllm_instrumentation.serving_curves.calibration.vllm_server",
         ]
         assert "--enable-mfu-metrics" in command
         assert "--disable-log-stats" in command

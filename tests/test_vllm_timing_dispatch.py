@@ -17,7 +17,7 @@ class _Gauge:
 
 
 def _fresh_module(monkeypatch):
-    from rag_stack.vllm_instrumentation.serving_curves.calibration import (
+    from rag_stack_evaluator.vllm_instrumentation.serving_curves.calibration import (
         vllm_timing_dispatch,
     )
 
@@ -52,7 +52,7 @@ def test_counter_increments_only_after_async_add_returns(monkeypatch) -> None:
 
 
 def test_counter_is_opt_in_and_requires_async_llm_add_request(monkeypatch) -> None:
-    from rag_stack.vllm_instrumentation.serving_curves.calibration import (
+    from rag_stack_evaluator.vllm_instrumentation.serving_curves.calibration import (
         vllm_timing_dispatch,
     )
 

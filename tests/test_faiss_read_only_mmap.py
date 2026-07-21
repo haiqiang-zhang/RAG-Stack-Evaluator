@@ -14,7 +14,7 @@ import faiss
 import numpy as np
 import pytest
 
-from rag_stack.static_rag_evaluator.vectordb._faiss_cache import (
+from rag_stack_evaluator.static_rag_evaluator.vectordb._faiss_cache import (
     LOCAL_READ_CACHE_ENV,
     PROCESS_READ_CACHE_MAX_BYTES_ENV,
     _clear_read_only_faiss_process_cache_for_tests,
@@ -24,8 +24,8 @@ from rag_stack.static_rag_evaluator.vectordb._faiss_cache import (
     publish_faiss_ready_marker,
     stage_faiss_read_file,
 )
-from rag_stack.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
-from rag_stack.static_rag_evaluator.vectordb.faiss_ivf import FaissIVF
+from rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
+from rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_ivf import FaissIVF
 
 
 @pytest.fixture(autouse=True)
@@ -143,7 +143,7 @@ def test_local_read_staging_is_opt_in(monkeypatch, tmp_path):
 def test_local_read_staging_reuses_and_versions_atomic_copy(
     monkeypatch, tmp_path
 ):
-    import rag_stack.static_rag_evaluator.vectordb._faiss_cache as cache_module
+    import rag_stack_evaluator.static_rag_evaluator.vectordb._faiss_cache as cache_module
 
     source = tmp_path / "source" / "test.faiss"
     source.parent.mkdir()
@@ -185,7 +185,7 @@ def test_local_read_staging_reuses_and_versions_atomic_copy(
 
 
 def test_concurrent_local_staging_copies_once(monkeypatch, tmp_path):
-    import rag_stack.static_rag_evaluator.vectordb._faiss_cache as cache_module
+    import rag_stack_evaluator.static_rag_evaluator.vectordb._faiss_cache as cache_module
 
     source = tmp_path / "source.faiss"
     source.write_bytes(b"x" * 1024 * 1024)
@@ -511,11 +511,11 @@ def test_ivf_read_only_mmap_matches_writable_load(
     ("module_name", "store_factory"),
     [
         (
-            "rag_stack.static_rag_evaluator.vectordb.faiss_hnsw",
+            "rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_hnsw",
             lambda path: _hnsw_store(path, read_only=True),
         ),
         (
-            "rag_stack.static_rag_evaluator.vectordb.faiss_ivf",
+            "rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_ivf",
             lambda path: _ivf_store(path, "flat", read_only=True),
         ),
     ],
@@ -542,7 +542,7 @@ def test_read_only_stage_failure_is_fatal(
 def test_read_only_constructor_requires_complete_cache(
     monkeypatch, tmp_path, store_type
 ):
-    from rag_stack.static_rag_evaluator.vectordb.base import BaseVectorStore
+    from rag_stack_evaluator.static_rag_evaluator.vectordb.base import BaseVectorStore
 
     def fake_base_init(self, _model, _metric, _batch, embedding_dim):
         self.embedding_dim = embedding_dim
@@ -572,7 +572,7 @@ def test_read_only_faiss_store_rejects_add(store_type, tmp_path):
 def test_yaml_loader_marks_only_faiss_retrieval_read_only(
     monkeypatch, db_type
 ):
-    import rag_stack.static_rag_evaluator.vectordb as vectordb_module
+    import rag_stack_evaluator.static_rag_evaluator.vectordb as vectordb_module
 
     config = {
         "vectordb": [
@@ -607,7 +607,7 @@ def test_yaml_loader_marks_only_faiss_retrieval_read_only(
 def test_yaml_loader_does_not_inject_read_only_into_non_faiss(
     monkeypatch,
 ):
-    import rag_stack.static_rag_evaluator.vectordb as vectordb_module
+    import rag_stack_evaluator.static_rag_evaluator.vectordb as vectordb_module
 
     config = {
         "vectordb": [
@@ -636,8 +636,8 @@ def test_yaml_loader_does_not_inject_read_only_into_non_faiss(
 
 
 def test_cached_ingest_check_reuses_validated_metadata(monkeypatch, tmp_path):
-    import rag_stack.static_rag_evaluator.vectordb._faiss_cache as cache_module
-    from rag_stack.static_rag_evaluator.static_rag_evaluator import (
+    import rag_stack_evaluator.static_rag_evaluator.vectordb._faiss_cache as cache_module
+    from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
         StaticRAGEvaluatorQualityOnly,
     )
 

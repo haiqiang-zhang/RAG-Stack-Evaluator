@@ -1,7 +1,7 @@
 import os
 import sys
 
-from rag_stack.static_rag_evaluator.measured.vllm_env import configure_vllm_worker_env
+from rag_stack_evaluator.static_rag_evaluator.measured.vllm_env import configure_vllm_worker_env
 
 
 def test_configure_vllm_worker_env_adds_env_bin_and_removes_hpcx_ucx():

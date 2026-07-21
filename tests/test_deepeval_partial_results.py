@@ -1,6 +1,6 @@
 import pytest
 
-from rag_stack.static_rag_evaluator.evaluation.metric import deepeval_metrics
+from rag_stack_evaluator.static_rag_evaluator.evaluation.metric import deepeval_metrics
 
 
 class _DummyAdapter:

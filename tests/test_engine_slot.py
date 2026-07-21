@@ -10,7 +10,7 @@ import types
 
 import pytest
 
-from rag_stack.static_rag_evaluator import engine_slot as es
+from rag_stack_evaluator.static_rag_evaluator import engine_slot as es
 
 
 class FakeEngine:
@@ -55,7 +55,7 @@ def test_child_pid_bookkeeping_and_clear(monkeypatch):
 
 def test_reaper_spares_keep_pids(monkeypatch):
     """_force_kill_engine_core_orphans must skip pids in keep_pids."""
-    from rag_stack.static_rag_evaluator.nodes.generator import vllm as vmod
+    from rag_stack_evaluator.static_rag_evaluator.nodes.generator import vllm as vmod
 
     class FakeProc:
         def __init__(self, pid, name):
@@ -95,7 +95,7 @@ def test_resource_adapter_clears_quality_slot_then_resamples(monkeypatch):
     import sys
     import time
 
-    from rag_stack.static_rag_evaluator.nodes.generator import vllm as vmod
+    from rag_stack_evaluator.static_rag_evaluator.nodes.generator import vllm as vmod
 
     gib = 1024 ** 3
 
@@ -176,7 +176,7 @@ def test_resource_adapter_requires_headroom_before_engine_launch(monkeypatch):
     import sys
     import time
 
-    from rag_stack.static_rag_evaluator.nodes.generator import vllm as vmod
+    from rag_stack_evaluator.static_rag_evaluator.nodes.generator import vllm as vmod
 
     gib = 1024 ** 3
 
@@ -257,7 +257,7 @@ def test_resource_adapter_deadline_logs_least_selected_tp_gpu(monkeypatch, caplo
     import sys
     import time
 
-    from rag_stack.static_rag_evaluator.nodes.generator import vllm as vmod
+    from rag_stack_evaluator.static_rag_evaluator.nodes.generator import vllm as vmod
 
     gib = 1024 ** 3
 
@@ -330,7 +330,7 @@ def test_resource_adapter_preserves_live_same_key_slot_on_single_gpu(monkeypatch
     import sys
     import time
 
-    from rag_stack.static_rag_evaluator.nodes.generator import vllm as vmod
+    from rag_stack_evaluator.static_rag_evaluator.nodes.generator import vllm as vmod
 
     gib = 1024 ** 3
     model = "Qwen/Qwen2.5-7B-Instruct"
@@ -411,7 +411,7 @@ def test_failed_engine_factory_restores_cvd_before_next_selection(monkeypatch):
     """A failed first build cannot remap retry 2 through its stale CVD pin."""
     import os
 
-    from rag_stack.static_rag_evaluator.nodes.generator import vllm as vmod
+    from rag_stack_evaluator.static_rag_evaluator.nodes.generator import vllm as vmod
 
     class BareVllm(vmod.Vllm):
         def __init__(self):

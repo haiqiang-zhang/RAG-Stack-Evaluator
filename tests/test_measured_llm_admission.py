@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
 
 class _Owner:
@@ -296,7 +296,7 @@ def test_query_expansion_http_admission_falls_back_to_system_config():
 
 def test_client_fill_plateau_does_not_stop_population_growth(monkeypatch):
     """Client occupancy can plateau outside vLLM and is not a stop proof."""
-    from rag_stack.static_rag_evaluator.measured.vllm_deployment import TrialInvalid
+    from rag_stack_evaluator.static_rag_evaluator.measured.vllm_deployment import TrialInvalid
 
     real_sleep = asyncio.sleep
 
@@ -805,7 +805,7 @@ def test_same_llm_candidate_keeps_only_frozen_w_across_late_support(
 
 def test_startup_engine_waiting_burst_is_not_permanent_saturation(monkeypatch):
     """A first-stage launch wave must be gone when rate stability is proved."""
-    from rag_stack.static_rag_evaluator.measured.vllm_deployment import TrialInvalid
+    from rag_stack_evaluator.static_rag_evaluator.measured.vllm_deployment import TrialInvalid
 
     real_sleep = asyncio.sleep
 
@@ -994,7 +994,7 @@ def test_population_increment_only_reports_cap_at_the_real_hard_cap():
 
 def test_population_adapter_waits_for_initial_and_adaptive_ramps(monkeypatch):
     """Sleeping drivers never participate in fill, candidate, or verdict proof."""
-    from rag_stack.static_rag_evaluator.measured.vllm_deployment import TrialInvalid
+    from rag_stack_evaluator.static_rag_evaluator.measured.vllm_deployment import TrialInvalid
 
     real_sleep = asyncio.sleep
 
@@ -1369,7 +1369,7 @@ def test_qps_completion_spans_do_not_hide_a_terminal_stall():
 
 
 def test_warmup_wall_cap_fails_closed_before_measurement(monkeypatch):
-    from rag_stack.static_rag_evaluator.measured.vllm_deployment import TrialInvalid
+    from rag_stack_evaluator.static_rag_evaluator.measured.vllm_deployment import TrialInvalid
 
     monkeypatch.setattr(sr, "_WARMUP_WALL_CAP_S", 0.02)
     runtime = _saturation_runtime(

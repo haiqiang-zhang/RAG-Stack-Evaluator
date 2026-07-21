@@ -1,6 +1,6 @@
 """Engine probe stats: windowing, prefix-cache rate from counter deltas."""
 
-from rag_stack.static_rag_evaluator.measured.serving_runtime import (
+from rag_stack_evaluator.static_rag_evaluator.measured.serving_runtime import (
     LLMContinuousStageService,
 )
 

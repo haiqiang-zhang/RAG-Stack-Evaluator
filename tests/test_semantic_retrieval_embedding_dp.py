@@ -10,11 +10,11 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from rag_stack.static_rag_evaluator import LazyInit
-from rag_stack.static_rag_evaluator.embedding.data_parallel import (
+from rag_stack_evaluator.static_rag_evaluator import LazyInit
+from rag_stack_evaluator.static_rag_evaluator.embedding.data_parallel import (
     DataParallelEmbedding,
 )
-from rag_stack.static_rag_evaluator.nodes.semanticretrieval.vectordb import (
+from rag_stack_evaluator.static_rag_evaluator.nodes.semanticretrieval.vectordb import (
     VectorDB,
 )
 
@@ -37,7 +37,7 @@ class _FakeEmbedding:
 
 
 def test_embedding_dp_builds_independent_replica_per_device(monkeypatch):
-    from rag_stack.static_rag_evaluator.embedding import base as embedding_base
+    from rag_stack_evaluator.static_rag_evaluator.embedding import base as embedding_base
 
     class FakeHF:
         def __init__(self, *, device=None, marker=None):
@@ -157,11 +157,11 @@ def test_single_replica_keeps_legacy_query_chunk_boundaries():
 
 
 def test_faiss_timing_wraps_one_parallel_encode_and_one_search():
-    from rag_stack.static_rag_evaluator.vectordb.base import (
+    from rag_stack_evaluator.static_rag_evaluator.vectordb.base import (
         get_retrieval_timings,
         reset_retrieval_timings,
     )
-    from rag_stack.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
+    from rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
 
     barrier = threading.Barrier(2)
 
@@ -209,7 +209,7 @@ def test_faiss_timing_wraps_one_parallel_encode_and_one_search():
 
 
 def test_semantic_retrieval_aggregate_cap_is_per_replica_batch_times_width():
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     system_config = {
         "batch_size_request": 1,

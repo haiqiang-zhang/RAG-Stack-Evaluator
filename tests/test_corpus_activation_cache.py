@@ -8,9 +8,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-import rag_stack.static_rag_evaluator.dataset as dataset_module
-import rag_stack.static_rag_evaluator.nodes.retrieval.base as retrieval_base
-from rag_stack.static_rag_evaluator.dataset import (
+import rag_stack_evaluator.static_rag_evaluator.dataset as dataset_module
+import rag_stack_evaluator.static_rag_evaluator.nodes.retrieval.base as retrieval_base
+from rag_stack_evaluator.static_rag_evaluator.dataset import (
     CorpusView,
     DatasetManager,
     get_active_corpus,

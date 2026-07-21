@@ -43,7 +43,7 @@ def _stage(name: str, instance):
 
 def test_batched_services_use_distinct_private_executors():
     """Neither batched stage may submit work to the loop's default executor."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     class ExplodingDefaultExecutor(concurrent.futures.ThreadPoolExecutor):
         def submit(self, *args, **kwargs):  # noqa: ANN002, ANN003
@@ -96,7 +96,7 @@ def test_batched_services_use_distinct_private_executors():
 
 def test_cancelled_close_waits_for_worker_then_shuts_down_executor():
     """Cancellation propagates only after in-flight work and executor teardown."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     started = threading.Event()
     release = threading.Event()

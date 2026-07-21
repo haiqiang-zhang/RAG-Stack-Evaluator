@@ -10,7 +10,7 @@ import time
 
 import pandas as pd
 
-from rag_stack.static_rag_evaluator.utils import util as u
+from rag_stack_evaluator.static_rag_evaluator.utils import util as u
 
 
 def _corpus(n=100):

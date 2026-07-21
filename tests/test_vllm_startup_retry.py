@@ -4,13 +4,13 @@ from collections import deque
 
 import pytest
 
-import rag_stack.static_rag_evaluator.measured.vllm_subprocess as subprocess_module
+import rag_stack_evaluator.static_rag_evaluator.measured.vllm_subprocess as subprocess_module
 from rag_stack.controller import _eval_retry_decision
-from rag_stack.static_rag_evaluator.measured.vllm_deployment import (
+from rag_stack_evaluator.static_rag_evaluator.measured.vllm_deployment import (
     TrialInvalid,
     VllmDeploymentManager,
 )
-from rag_stack.static_rag_evaluator.measured.vllm_subprocess import (
+from rag_stack_evaluator.static_rag_evaluator.measured.vllm_subprocess import (
     RetryableVllmStartupError,
     _wait_for_health,
 )

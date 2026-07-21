@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from rag_stack.static_rag_evaluator import recording
+from rag_stack_evaluator.static_rag_evaluator import recording
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_quality_only_evaluate_forwards_pipeline_envelope_by_identity():
     (and already fired through on_trace_ready) — the controller's judge/CM
     overlap matches by identity."""
     from rag_stack.rag_ir import make_quality_trace_envelope
-    from rag_stack.static_rag_evaluator.static_rag_evaluator import (
+    from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
         StaticRAGEvaluatorQualityOnly,
     )
 
@@ -155,7 +155,7 @@ def test_publish_quality_trace_fires_hook_with_the_shipped_envelope():
     envelope validates against the frozen v2 contract, question ids are the
     recorder's permanent qids (dataset row positions), and bytes ride along."""
     from rag_stack.rag_ir import validate_quality_trace_envelope
-    from rag_stack.static_rag_evaluator.static_rag_evaluator import (
+    from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
         _publish_quality_trace,
     )
 

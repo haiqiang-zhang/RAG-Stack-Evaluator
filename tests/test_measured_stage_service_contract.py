@@ -26,7 +26,7 @@ class _RuntimeOwner:
 
 
 def _runtime(*, stages=None, batch_size=4, measured_queries=1):
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     return sr.MeasuredServingRuntime(
         owner=_RuntimeOwner(),
@@ -57,7 +57,7 @@ def _runtime(*, stages=None, batch_size=4, measured_queries=1):
 
 def test_prompt_maker_uses_dynamic_batch_service():
     """Vectorized prompt builders must not become one thread job per query."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     stage = {
         "stage": "prompt_maker",
@@ -81,7 +81,7 @@ def test_prompt_maker_uses_dynamic_batch_service():
 
 def test_partial_batch_timeout_is_anchored_to_oldest_enqueue():
     """A request that aged while the worker was busy must flush immediately."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     async def scenario():
         # Construct only the queueing state so no background worker can consume
@@ -107,7 +107,7 @@ def test_partial_batch_timeout_is_anchored_to_oldest_enqueue():
 
 def test_full_batch_flushes_before_oldest_timeout():
     """Filling an idle partial queue must wake it without waiting for timeout."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     async def scenario():
         # Exercise _next_batch directly so the assertion covers only the
@@ -143,7 +143,7 @@ def test_full_batch_flushes_before_oldest_timeout():
 
 def test_cancelling_only_queued_request_keeps_open_worker_alive():
     """A transient empty queue must not be mistaken for service shutdown."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     async def scenario():
         # Reproduce run()'s queued-cancellation path without constructing an
@@ -182,7 +182,7 @@ def test_cancelling_only_queued_request_keeps_open_worker_alive():
 
 def test_close_cancels_queued_partial_batch_without_running_it():
     """Public close cancels queued work; it is not a partial-batch drain."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     class Owner:
         @staticmethod
@@ -234,7 +234,7 @@ def test_close_cancels_queued_partial_batch_without_running_it():
 
 def test_close_waits_for_an_already_started_batch():
     """Closing may cancel queued rows, but an executor-owned batch must finish."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     started = threading.Event()
     release = threading.Event()
@@ -289,7 +289,7 @@ def test_close_waits_for_an_already_started_batch():
 
 def test_batched_service_time_covers_postprocess_until_result_release():
     """Stage service is worker-busy time, not only instance.pure() time."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     postprocess_s = 0.05
 

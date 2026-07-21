@@ -10,8 +10,8 @@ See LICENSE.autorag for the full license text.
 The following files contain modified code from TART
 (https://github.com/facebookresearch/tart):
 
-  rag_stack/static_rag_evaluator/nodes/passagereranker/tart/modeling_enc_t5.py
-  rag_stack/static_rag_evaluator/nodes/passagereranker/tart/tokenization_enc_t5.py
+  rag_stack_evaluator/static_rag_evaluator/nodes/passagereranker/tart/modeling_enc_t5.py
+  rag_stack_evaluator/static_rag_evaluator/nodes/passagereranker/tart/tokenization_enc_t5.py
 
 Copyright (c) Facebook, Inc. and its affiliates.
 Licensed under the Creative Commons Attribution-NonCommercial 4.0

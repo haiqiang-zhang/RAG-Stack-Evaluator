@@ -5,12 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
-import rag_stack.vllm_instrumentation.serving_curves.calibration.vllm_server as server_module
-from rag_stack.vllm_instrumentation.serving_curves.calibration.vllm_server import (
+import rag_stack_evaluator.vllm_instrumentation.serving_curves.calibration.vllm_server as server_module
+from rag_stack_evaluator.vllm_instrumentation.serving_curves.calibration.vllm_server import (
     PD_SAFE_PROMETHEUS_ENV,
     install_telemetry_stat_logger,
 )
-from rag_stack.vllm_instrumentation.serving_curves.calibration.vllm_telemetry import (
+from rag_stack_evaluator.vllm_instrumentation.serving_curves.calibration.vllm_telemetry import (
     TELEMETRY_ENV,
     TELEMETRY_SCHEMA,
     VllmStageTelemetryStatLogger,

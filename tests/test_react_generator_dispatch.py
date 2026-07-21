@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from rag_stack.static_rag_evaluator.static_rag_evaluator import (
+from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
 	StaticRAGEvaluatorQualityOnly,
 )
 
@@ -23,8 +23,8 @@ def test_react_uses_resolved_generator_component(monkeypatch):
 		created["run_react"] = kwargs
 		return result
 
-	import rag_stack.static_rag_evaluator.agentic_react as react_module
-	import rag_stack.static_rag_evaluator.nodes.semanticretrieval.vectordb as vdb_module
+	import rag_stack_evaluator.static_rag_evaluator.agentic_react as react_module
+	import rag_stack_evaluator.static_rag_evaluator.nodes.semanticretrieval.vectordb as vdb_module
 
 	monkeypatch.setattr(react_module, "run_react", fake_run_react)
 	monkeypatch.setattr(vdb_module, "VectorDB", FakeRetriever)

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from rag_stack.runtime_parallelism import RERANKER_MEASURED_DP_COMPONENTS
-from rag_stack.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
+from rag_stack_evaluator.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
 
 
 def _node(stage: str, component: str):
@@ -57,8 +57,8 @@ def _system_config(stage: str, width: int) -> dict:
 
 
 def _patch_injection_side_effects(monkeypatch):
-    from rag_stack.static_rag_evaluator.embedding import base as embedding_base
-    from rag_stack.static_rag_evaluator.measured import cache as measured_cache
+    from rag_stack_evaluator.static_rag_evaluator.embedding import base as embedding_base
+    from rag_stack_evaluator.static_rag_evaluator.measured import cache as measured_cache
 
     events = []
     monkeypatch.setattr(

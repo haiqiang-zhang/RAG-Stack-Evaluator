@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-import rag_stack.static_rag_evaluator.measured.gpu_mem as gm
-from rag_stack.static_rag_evaluator.measured.gpu_mem import (
+import rag_stack_evaluator.static_rag_evaluator.measured.gpu_mem as gm
+from rag_stack_evaluator.static_rag_evaluator.measured.gpu_mem import (
     _model_weight_gib,
     _weight_floor_util,
     effective_util,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
-from rag_stack.static_rag_evaluator.nodes.generator.vllm_api import VllmAPI
+from rag_stack_evaluator.static_rag_evaluator.nodes.generator.vllm_api import VllmAPI
 
 
 def test_max_model_length_matches_requested_model(monkeypatch):
@@ -15,7 +15,7 @@ def test_max_model_length_matches_requested_model(monkeypatch):
 		]
 	}
 	monkeypatch.setattr(
-		"rag_stack.static_rag_evaluator.nodes.generator.vllm_api.requests.get",
+		"rag_stack_evaluator.static_rag_evaluator.nodes.generator.vllm_api.requests.get",
 		lambda *args, **kwargs: response,
 	)
 	instance = object.__new__(VllmAPI)
@@ -52,7 +52,7 @@ def test_chat_request_caps_rendered_prompt_to_context_window(monkeypatch):
 		return response
 
 	monkeypatch.setattr(
-		"rag_stack.static_rag_evaluator.nodes.generator.vllm_api.requests.post",
+		"rag_stack_evaluator.static_rag_evaluator.nodes.generator.vllm_api.requests.post",
 		fake_post,
 	)
 	instance.call_vllm_api("prompt", max_tokens=512)

@@ -1,7 +1,7 @@
 import pandas as pd
 
-from rag_stack.static_rag_evaluator import recording
-from rag_stack.static_rag_evaluator.agentic_react import run_react
+from rag_stack_evaluator.static_rag_evaluator import recording
+from rag_stack_evaluator.static_rag_evaluator.agentic_react import run_react
 
 
 class _FakeGenerator:

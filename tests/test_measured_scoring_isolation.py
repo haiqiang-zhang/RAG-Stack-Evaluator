@@ -2,10 +2,10 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from rag_stack.static_rag_evaluator.measured.serving_runtime import (
+from rag_stack_evaluator.static_rag_evaluator.measured.serving_runtime import (
     MeasuredServingRuntime,
 )
-from rag_stack.static_rag_evaluator.static_rag_evaluator import (
+from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
     StaticRAGEvaluatorQualityOnly,
 )
 

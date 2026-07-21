@@ -8,7 +8,7 @@ import time
 import faiss
 import pytest
 
-from rag_stack.static_rag_evaluator.vectordb._faiss_cache import (
+from rag_stack_evaluator.static_rag_evaluator.vectordb._faiss_cache import (
 	atomic_save_faiss_pair,
 	faiss_cache_build_lock,
 	faiss_cache_pair_ready,
@@ -119,10 +119,10 @@ def test_failed_publish_never_leaves_ready_marker(monkeypatch, tmp_path):
 @pytest.mark.parametrize("store_name", ["ivf", "hnsw"])
 def test_shared_faiss_delete_is_explicitly_unsupported(store_name):
 	if store_name == "ivf":
-		from rag_stack.static_rag_evaluator.vectordb.faiss_ivf import FaissIVF
+		from rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_ivf import FaissIVF
 		store_type = FaissIVF
 	else:
-		from rag_stack.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
+		from rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
 		store_type = FaissHNSW
 	store = object.__new__(store_type)
 	with pytest.raises(NotImplementedError, match="immutable shared FAISS"):
@@ -130,7 +130,7 @@ def test_shared_faiss_delete_is_explicitly_unsupported(store_name):
 
 
 def test_hnsw_failed_save_rolls_back_in_memory_state(monkeypatch, tmp_path):
-	from rag_stack.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
+	from rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
 
 	store = object.__new__(FaissHNSW)
 	store.path = str(tmp_path / "cache")
@@ -160,7 +160,7 @@ def test_hnsw_failed_save_rolls_back_in_memory_state(monkeypatch, tmp_path):
 def test_failed_append_preserves_previous_complete_generation(monkeypatch, tmp_path):
 	import numpy as np
 
-	from rag_stack.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
+	from rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_hnsw import FaissHNSW
 
 	store = object.__new__(FaissHNSW)
 	store.path = str(tmp_path / "cache")

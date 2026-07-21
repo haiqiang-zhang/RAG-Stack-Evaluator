@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import torch
 
-from rag_stack.static_rag_evaluator.nodes.passagereranker.colbert import (
+from rag_stack_evaluator.static_rag_evaluator.nodes.passagereranker.colbert import (
     get_colbert_embedding_batch,
 )
 

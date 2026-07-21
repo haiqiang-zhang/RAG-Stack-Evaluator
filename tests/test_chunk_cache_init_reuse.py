@@ -8,9 +8,9 @@ import shutil
 import pandas as pd
 
 import rag_stack.cost_model.token_stats as token_stats_module
-from rag_stack.static_rag_evaluator import chunk_cache
-from rag_stack.static_rag_evaluator import dataset as dataset_module
-from rag_stack.static_rag_evaluator.dataset import DatasetManager
+from rag_stack_evaluator.static_rag_evaluator import chunk_cache
+from rag_stack_evaluator.static_rag_evaluator import dataset as dataset_module
+from rag_stack_evaluator.static_rag_evaluator.dataset import DatasetManager
 
 
 class _FakeTokenStats:

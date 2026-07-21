@@ -14,7 +14,7 @@ class _Owner:
 
     @staticmethod
     def _merge_service_node_result(node, previous, result):
-        from rag_stack.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
+        from rag_stack_evaluator.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
 
         return MeasuredEvaluator._merge_service_node_result(node, previous, result)
 
@@ -40,7 +40,7 @@ def _state(sr, frame: pd.DataFrame, *, record_trace: bool):
 
 
 def _capture_record_io(monkeypatch):
-    from rag_stack.static_rag_evaluator import recording
+    from rag_stack_evaluator.static_rag_evaluator import recording
 
     calls = []
 
@@ -53,8 +53,8 @@ def _capture_record_io(monkeypatch):
 
 def test_llm_fast_path_matches_reference_merge_and_trace(monkeypatch):
     """The one-row, collision-free serving frame is equivalent to the old merge."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
-    from rag_stack.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
 
     previous = pd.DataFrame(
         {
@@ -119,8 +119,8 @@ def test_llm_fast_path_matches_reference_merge_and_trace(monkeypatch):
 
 def test_query_expansion_fast_path_matches_reference_merge_and_trace(monkeypatch):
     """Query expansion is equivalent when the upstream frame has no queries column."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
-    from rag_stack.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
 
     previous = pd.DataFrame(
         {
@@ -186,8 +186,8 @@ def test_query_expansion_existing_queries_falls_back_to_reference_merge(
     monkeypatch,
 ):
     """An upstream queries column must retain the legacy preserve-old behavior."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
-    from rag_stack.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
 
     previous = pd.DataFrame(
         {
@@ -231,8 +231,8 @@ def test_query_expansion_existing_queries_falls_back_to_reference_merge(
 
 def test_llm_existing_output_column_falls_back_to_reference_merge():
     """Generator overlap keeps the generic merge's duplicate-column semantics."""
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
-    from rag_stack.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured.evaluator import MeasuredEvaluator
 
     previous = pd.DataFrame(
         {

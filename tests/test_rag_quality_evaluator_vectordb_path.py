@@ -1,6 +1,6 @@
 """Tests for StaticRAGEvaluatorQualityOnly vectordb path resolution and index caching."""
 
-from rag_stack.static_rag_evaluator.static_rag_evaluator import StaticRAGEvaluatorQualityOnly
+from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import StaticRAGEvaluatorQualityOnly
 
 
 def test_resolve_vectordb_paths_hashing():
@@ -24,7 +24,7 @@ def test_resolve_vectordb_paths_hashing():
     assert path_a == path_a2
     # Subdirectory is appended under the SHARED global faiss root (faiss
     # indexes are content-addressed and reused across runs, not project-local)
-    from rag_stack.static_rag_evaluator.cache_paths import faiss_index_root
+    from rag_stack_evaluator.static_rag_evaluator.cache_paths import faiss_index_root
     assert path_a.startswith(faiss_index_root() + "/")
     assert "M32" in path_a and "nlist1024" in path_a
     assert "M16" in path_b and "nlist2048" in path_b

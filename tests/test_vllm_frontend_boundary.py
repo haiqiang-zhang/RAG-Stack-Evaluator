@@ -5,17 +5,17 @@ import json
 
 import pytest
 
-from rag_stack.vllm_instrumentation.calibration.runtime_identity import (
+from rag_stack_evaluator.vllm_instrumentation.calibration.runtime_identity import (
     CALIBRATION_RUN_ID_ENV,
 )
-from rag_stack.vllm_instrumentation.serving_curves.calibration.vllm_frontend_boundary import (
+from rag_stack_evaluator.vllm_instrumentation.serving_curves.calibration.vllm_frontend_boundary import (
     FRONTEND_BOUNDARY_SCHEMA,
     FrontendBoundaryCoverageError,
     consume_frontend_instrumentation_exclusion_s,
     frontend_boundary_coverage,
     install_frontend_boundary_telemetry,
 )
-from rag_stack.vllm_instrumentation.serving_curves.calibration.vllm_telemetry import (
+from rag_stack_evaluator.vllm_instrumentation.serving_curves.calibration.vllm_telemetry import (
     TELEMETRY_ENV,
 )
 

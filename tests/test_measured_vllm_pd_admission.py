@@ -2,11 +2,11 @@ import asyncio
 
 import pytest
 
-from rag_stack.static_rag_evaluator.measured.vllm_pd_pair import (
+from rag_stack_evaluator.static_rag_evaluator.measured.vllm_pd_pair import (
     VllmPdPair,
     VllmPdPairKey,
 )
-from rag_stack.static_rag_evaluator.measured.vllm_subprocess import (
+from rag_stack_evaluator.static_rag_evaluator.measured.vllm_subprocess import (
     MEASURED_REQUEST_FORMAT_KEY,
     REQUEST_FORMAT_CHAT_COMPLETIONS,
 )

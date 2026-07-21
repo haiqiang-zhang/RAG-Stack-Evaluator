@@ -2,18 +2,19 @@
 
 RAG-Stack Evaluator contains the static quality evaluator, the real-hardware
 measured evaluator, and the vLLM instrumentation used by measured runs. It
-preserves the existing Python imports:
+exposes them through its own top-level Python package:
 
 ```python
-from rag_stack.static_rag_evaluator import (
+from rag_stack_evaluator.static_rag_evaluator import (
     StaticRAGEvaluatorQualityOnly,
     MeasuredProvider,
 )
 ```
 
-This distribution contributes `rag_stack.static_rag_evaluator` and
-`rag_stack.vllm_instrumentation` to the `rag_stack` namespace. The repository
-deliberately does **not** contain `rag_stack/__init__.py`.
+This distribution owns the `rag_stack_evaluator` package, including
+`rag_stack_evaluator.static_rag_evaluator` and
+`rag_stack_evaluator.vllm_instrumentation`. It does not contribute modules to
+the host's `rag_stack` namespace.
 
 This is currently a RAG-Stack host subproject, not a standalone replacement
 for the host package. The evaluator continues to consume RAG-Stack's shared
@@ -31,9 +32,10 @@ Compatibility for this release is explicit:
 
 The evaluator wheel deliberately does not declare the host as a dependency,
 because the host in turn pins this evaluator as a submodule/workspace member.
-Installing this repository alone can therefore build successfully but cannot
-import the evaluator's host-owned contracts. From a compatible host revision,
-use the host-root installation flow:
+Installing this repository alone can therefore build successfully and import
+the package root, but evaluator submodules that consume host-owned contracts
+still require RAG-Stack. From a compatible host revision, use the host-root
+installation flow:
 
 ```bash
 git clone --recurse-submodules https://github.com/haiqiang-zhang/rag-stack.git
@@ -65,7 +67,7 @@ environments may provide `faiss-cpu=1.14.1` through conda and omit the `faiss`
 extra. The supported integration checks this repository out as the
 `RAG-Stack-Evaluator` submodule and installs both local projects as editable
 distributions (or resolves them through the parent workspace), so the host's
-shared `rag_stack` contracts and this namespace package are available together.
+shared `rag_stack` contracts and the evaluator package are available together.
 
 ## Network safety
 
@@ -96,9 +98,7 @@ Run evaluator tests from an initialized compatible host checkout so the shared
 ```bash
 uv pip install -e 'RAG-Stack-Evaluator[test,faiss]' -e .
 python -m pytest \
-  RAG-Stack-Evaluator/tests/test_vllm_multimodel_gateway.py \
-  tests/test_vllm_instrumentation_promotion.py \
-  tests/test_measured_log_suppression.py
+  RAG-Stack-Evaluator/tests/test_vllm_multimodel_gateway.py
 ```
 
 The complete suite includes FAISS, model-backend, vLLM, and measured-runtime
@@ -258,8 +258,8 @@ paths must identify Parquet files.
 The stable path-based quality API is:
 
 ```python
-from rag_stack.static_rag_evaluator.dataset import DatasetManager
-from rag_stack.static_rag_evaluator import StaticRAGEvaluatorQualityOnly
+from rag_stack_evaluator.static_rag_evaluator.dataset import DatasetManager
+from rag_stack_evaluator.static_rag_evaluator import StaticRAGEvaluatorQualityOnly
 
 dataset = DatasetManager(
     project_dir=project_dir,
@@ -300,7 +300,7 @@ Measured evaluation uses the same evaluator and resolved pipeline config. The
 physical deployment is a second, fully resolved mapping named `system_config`:
 
 ```python
-from rag_stack.static_rag_evaluator import MeasuredProvider
+from rag_stack_evaluator.static_rag_evaluator import MeasuredProvider
 
 with MeasuredProvider(
     evaluator,

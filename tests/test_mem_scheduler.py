@@ -7,7 +7,7 @@ co-resident reranker loaded after it sized" bug.
 """
 from __future__ import annotations
 
-from rag_stack.static_rag_evaluator.measured.vllm_deployment import (
+from rag_stack_evaluator.static_rag_evaluator.measured.vllm_deployment import (
     VllmDeploymentManager,
     _aux_reserve_overrides,
     _COMPRESSOR_RESERVE_GIB,

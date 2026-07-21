@@ -15,7 +15,7 @@ import pandas as pd
 
 
 def test_reranker_cache_none_builds_one_replica_per_injected_device() -> None:
-    from rag_stack.static_rag_evaluator.nodes.passagereranker.base import (
+    from rag_stack_evaluator.static_rag_evaluator.nodes.passagereranker.base import (
         BasePassageReranker,
     )
 
@@ -56,8 +56,8 @@ def test_reranker_cache_none_builds_one_replica_per_injected_device() -> None:
 def test_llmlingua_cache_none_builds_and_dispatches_every_replica(
     monkeypatch,
 ) -> None:
-    from rag_stack.static_rag_evaluator.measured import cache as measured_cache
-    from rag_stack.static_rag_evaluator.nodes.passagecompressor import llmlingua2
+    from rag_stack_evaluator.static_rag_evaluator.measured import cache as measured_cache
+    from rag_stack_evaluator.static_rag_evaluator.nodes.passagecompressor import llmlingua2
 
     builds: list[tuple[str, str, bool]] = []
 
@@ -123,7 +123,7 @@ def test_llmlingua_cache_none_builds_and_dispatches_every_replica(
 
 
 def test_reranker_dp_preserves_flat_order_and_nested_shape() -> None:
-    from rag_stack.static_rag_evaluator.nodes.passagereranker.dp import (
+    from rag_stack_evaluator.static_rag_evaluator.nodes.passagereranker.dp import (
         rerank_flatten_apply_dp,
     )
 
@@ -155,7 +155,7 @@ def test_reranker_dp_preserves_flat_order_and_nested_shape() -> None:
 def test_tart_dp_keeps_each_instruction_query_paired_with_its_passage(
     monkeypatch,
 ) -> None:
-    from rag_stack.static_rag_evaluator.nodes.passagereranker.tart import tart
+    from rag_stack_evaluator.static_rag_evaluator.nodes.passagereranker.tart import tart
 
     calls: list[tuple[str, str, str, list[tuple[str, str]]]] = []
 
@@ -222,7 +222,7 @@ def test_tart_collects_each_forward_scores_with_one_bulk_cpu_transfer(
     the former ``[float(score[1]) for score in probabilities]`` implementation
     cannot pass this test.
     """
-    from rag_stack.static_rag_evaluator.nodes.passagereranker.tart import tart
+    from rag_stack_evaluator.static_rag_evaluator.nodes.passagereranker.tart import tart
     import torch.nn.functional as functional
 
     events: list[tuple[str, object]] = []
@@ -306,7 +306,7 @@ def test_tart_collects_each_forward_scores_with_one_bulk_cpu_transfer(
 def test_monot5_dp_routes_each_flattened_pair_to_one_replica(
     monkeypatch,
 ) -> None:
-    from rag_stack.static_rag_evaluator.nodes.passagereranker import monot5
+    from rag_stack_evaluator.static_rag_evaluator.nodes.passagereranker import monot5
 
     calls: list[tuple[str, str, str, list[str]]] = []
 
@@ -370,7 +370,7 @@ def test_monot5_dp_routes_each_flattened_pair_to_one_replica(
 
 
 def test_aux_dp_service_cap_is_local_batch_times_replica_count() -> None:
-    from rag_stack.static_rag_evaluator.measured import serving_runtime as sr
+    from rag_stack_evaluator.static_rag_evaluator.measured import serving_runtime as sr
 
     def stage(name: str, component: str) -> dict:
         return {

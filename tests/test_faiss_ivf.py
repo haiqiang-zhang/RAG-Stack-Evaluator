@@ -12,7 +12,7 @@ import sys
 import faiss  # import first to avoid segfault
 import numpy as np
 
-from rag_stack.static_rag_evaluator.vectordb.faiss_ivf import FaissIVF
+from rag_stack_evaluator.static_rag_evaluator.vectordb.faiss_ivf import FaissIVF
 
 
 def random_embeddings(n, d=64):
