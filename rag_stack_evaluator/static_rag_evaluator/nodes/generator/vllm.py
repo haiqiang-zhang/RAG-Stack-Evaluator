@@ -13,9 +13,7 @@ import pandas as pd
 from rag_stack_evaluator.static_rag_evaluator.nodes.generator.base import BaseGenerator
 from rag_stack_evaluator.static_rag_evaluator.utils import result_to_dataframe
 from rag_stack_evaluator.static_rag_evaluator.utils.util import pop_params, to_list, is_chat_prompt
-from rag_stack_evaluator.static_rag_evaluator.measured.vllm_env import (
-	ensure_python_env_lib_in_ld_library_path,
-)
+from rag_stack_evaluator.vllm_env import configure_vllm_worker_env
 from rag_stack_evaluator.static_rag_evaluator.measured.vllm_subprocess import (
 	MEASURED_REQUEST_FORMAT_KEY,
 	REQUEST_FORMAT_CHAT_COMPLETIONS,
@@ -411,7 +409,7 @@ def _build_inprocess_engine(owner, factory):
 class Vllm(BaseGenerator):
 	def __init__(self, project_dir: str, model: str, **kwargs):
 		super().__init__(project_dir, model, **kwargs)
-		ensure_python_env_lib_in_ld_library_path(logger=logger)
+		configure_vllm_worker_env(logger=logger)
 		try:
 			from vllm import SamplingParams, LLM
 		except ImportError:

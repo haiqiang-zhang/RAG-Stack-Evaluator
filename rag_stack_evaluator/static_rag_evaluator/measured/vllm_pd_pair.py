@@ -73,7 +73,7 @@ from rag_stack_evaluator.static_rag_evaluator.measured.vllm_subprocess import (
     _wait_for_health,
     _request_format,
 )
-from rag_stack_evaluator.static_rag_evaluator.measured.vllm_env import (
+from rag_stack_evaluator.vllm_env import (
     configure_vllm_worker_env,
 )
 

@@ -81,4 +81,4 @@ if [[ "${1:-}" == "--" ]]; then
   shift
 fi
 
-exec vllm "${ARGS[@]}" "$@"
+exec python -m rag_stack_evaluator.vllm_launcher "${ARGS[@]}" "$@"

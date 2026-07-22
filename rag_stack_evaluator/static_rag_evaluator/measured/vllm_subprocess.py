@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 from rag_stack.logging_utils import PROJECT_LOG_FILE_ENV, PROJECT_LOG_STDIO_REDIRECTED_ENV
-from rag_stack_evaluator.static_rag_evaluator.measured.vllm_env import (
+from rag_stack_evaluator.vllm_env import (
 	configure_vllm_worker_env,
 )
 

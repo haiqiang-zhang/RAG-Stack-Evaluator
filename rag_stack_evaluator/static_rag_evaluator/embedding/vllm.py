@@ -13,6 +13,8 @@ from PIL import Image
 from tenacity import retry, stop_after_attempt, wait_exponential
 import atexit
 
+from rag_stack_evaluator.vllm_env import configure_vllm_worker_env
+
 SUPPORT_EMBED_TYPES = ["image", "text"]
 logger = logging.getLogger("RAG-Stack")
 
@@ -75,6 +77,7 @@ class VllmEmbedding(MultiModalEmbedding):
 			embed_batch_size=embed_batch_size,
 			callback_manager=callback_manager,
 		)
+		configure_vllm_worker_env(logger=logger)
 		try:
 			from vllm import LLM as VLLModel
 		except ImportError:

@@ -148,6 +148,7 @@ cu12 = [
     "rag-stack-evaluator[gpu]",
     "vllm==0.18.1",
     "flashinfer-python==0.6.6",
+    "flashinfer-cubin==0.6.6",
     "nixl==1.2.0",
     "nixl-cu12==1.2.0",
 ]
@@ -156,11 +157,10 @@ cu13 = [
     "vllm==0.22.1",
     "nixl==1.2.0",
     "nixl-cu13==1.2.0",
-    "cuda-toolkit==13.0.2",
-    "nvidia-cuda-cccl==13.0.85.*",
-    "nvidia-cuda-crt==13.0.88.*",
-    "nvidia-cuda-nvcc==13.0.88.*",
-    "nvidia-nvvm==13.0.88.*",
+    # CUDA 13 has a unified Python-wheel toolkit with a real nvcc. Select its
+    # complete compiler/header/runtime set as one versioned unit so a resolver
+    # cannot drift one component (especially cudart) to another minor release.
+    "cuda-toolkit[cccl,crt,cudart,nvcc,nvvm]==13.0.2; sys_platform == 'linux'",
 ]
 
 # `all` follows the current cu13 default. On a driver below 580, install
@@ -202,6 +202,6 @@ include = [
 ]
 
 [tool.uv]
-# uv selects the torch CUDA wheel from the host driver. The cu12/cu13 extra
-# selects the matching vLLM/NIXL/toolkit stack.
+# Public install commands pass --torch-backend cu128/cu130 to match the selected
+# cu12/cu13 vLLM stack. Auto remains the fallback for ad-hoc uv pip installs.
 torch-backend = "auto"

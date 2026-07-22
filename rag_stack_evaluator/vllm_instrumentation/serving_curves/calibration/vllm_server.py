@@ -97,6 +97,10 @@ def install_telemetry_stat_logger(async_llm_module: ModuleType) -> bool:
 def main() -> None:
     # These imports are intentionally local: importing the telemetry schema or
     # its unit tests must not import torch, vLLM, uvloop, or initialize CUDA.
+    from rag_stack_evaluator.vllm_env import configure_vllm_worker_env
+
+    configure_vllm_worker_env()
+
     from vllm.entrypoints.utils import cli_env_setup
 
     cli_env_setup()

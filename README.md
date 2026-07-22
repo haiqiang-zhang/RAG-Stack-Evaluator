@@ -43,8 +43,10 @@ cd rag-stack
 # If needed, check out a host revision that pins
 # `rag-stack-evaluator==0.0.1`; it may not yet be the default branch.
 # Create and activate the conda environment as documented by the host first.
-uv pip install -e 'RAG-Stack-Evaluator[cu12]' -e '.[cu12]'
-# On NVIDIA driver >=580, use cu13 in both editable requirements instead.
+uv pip install --torch-backend cu128 \
+  -e 'RAG-Stack-Evaluator[cu12]' -e '.[cu12]'
+# On NVIDIA driver >=580, use --torch-backend cu130 and cu13 in both
+# editable requirements instead.
 ```
 
 The commands below are only for developing this submodule after the compatible
@@ -56,10 +58,10 @@ CUDA stack when local GPU models or measured evaluation are required:
 uv pip install -e '.[faiss]'
 
 # NVIDIA driver 525-579.
-uv pip install -e '.[cu12,faiss]'
+uv pip install --torch-backend cu128 -e '.[cu12,faiss]'
 
 # NVIDIA driver >=580.
-uv pip install -e '.[cu13,faiss]'
+uv pip install --torch-backend cu130 -e '.[cu13,faiss]'
 ```
 
 Do not install the `cu12` and `cu13` extras together. Native benchmark
@@ -68,6 +70,13 @@ extra. The supported integration checks this repository out as the
 `RAG-Stack-Evaluator` submodule and installs both local projects as editable
 distributions (or resolves them through the parent workspace), so the host's
 shared `rag_stack` contracts and the evaluator package are available together.
+The evaluator configures a matching CUDA toolkit at every vLLM launch boundary:
+it validates an explicit `CUDA_HOME`, discovers system and Conda toolkits, and
+uses the complete toolkit installed by the cu13 extra when needed. No activation
+hook or toolkit-configuration shell script is required. CUDA 12's PyPI toolkit
+components do not include an `nvcc` driver, so the cu12 extra installs matching
+precompiled FlashInfer cubins. Any unsupported kernel that still triggers source
+JIT requires a matching system or Conda CUDA 12 toolkit.
 
 ## Network safety
 
