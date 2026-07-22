@@ -99,22 +99,6 @@ reverse proxy. A vLLM API key can be passed as an extra server argument (for
 example `-- --api-key "$JUDGE_API_KEY"`), but this does not add authentication
 to the gateway itself.
 
-## Tests
-
-Run evaluator tests from an initialized compatible host checkout so the shared
-`rag_stack.*` contracts are present. A lightweight, non-GPU check is:
-
-```bash
-uv pip install -e 'RAG-Stack-Evaluator[test,faiss]' -e .
-python -m pytest \
-  RAG-Stack-Evaluator/tests/test_vllm_multimodel_gateway.py
-```
-
-The complete suite includes FAISS, model-backend, vLLM, and measured-runtime
-cases. Use `RAG-Stack-Evaluator[test,cu12,faiss]` or
-`RAG-Stack-Evaluator[test,cu13,faiss]` on a dedicated compatible GPU host; do
-not run hardware tests on a shared benchmark server.
-
 ## [Examples](example/)
 
 ## Input Contract
