@@ -103,8 +103,23 @@ except Exception as _exc:  # noqa: BLE001
 	logger.debug(f"Could not patch llama_index dispatcher: {_exc}")
 
 
-# Public API exposed for baselines and cost-model-coupled callers.
-from rag_stack_evaluator.static_rag_evaluator.dataset import DatasetEvalManager
+# Public API exposed for baselines and cost-model-coupled callers.  Keep the
+# dataset owner lazy: its host integration imports ``rag_stack.search_space``,
+# while the host search-space module imports evaluator schema constants.  An
+# eager re-export here would therefore make the public split package depend on
+# import order.
+def __getattr__(name):
+	if name == "DatasetEvalManager":
+		from rag_stack_evaluator.static_rag_evaluator.dataset import (
+			DatasetEvalManager,
+		)
+
+		return DatasetEvalManager
+	raise AttributeError(
+		f"module {__name__!r} has no attribute {name!r}"
+	)
+
+
 from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
 	StaticRAGEvaluatorQualityOnly,
 )

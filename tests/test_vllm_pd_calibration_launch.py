@@ -30,6 +30,8 @@ def _unlaunched_pair(
     pair.calibration_telemetry = calibration_telemetry
     pair.prefill_port = 10_001
     pair.decode_port = 10_002
+    pair.prefill_rendezvous_port = 61_011
+    pair.decode_rendezvous_port = 61_021
     pair.prefill_side_port = 61_001
     pair.decode_side_port = 61_002
     pair.prefill_proc = None
@@ -50,12 +52,13 @@ def _capture_launches(monkeypatch):
         lambda _devices, requested, **_kwargs: float(requested),
     )
 
-    def fake_popen(command, *, env, label):
+    def fake_popen(command, *, env, label, capture_tail=False):
         process = object()
         launches.append({
             "command": list(command),
             "env": dict(env),
             "label": label,
+            "capture_tail": capture_tail,
             "process": process,
         })
         return process
@@ -135,6 +138,8 @@ def test_normal_pd_launch_keeps_measured_stats_and_environment_contract(
     assert "RAG_STACK_VLLM_CALIBRATION_RUN_ID" not in launch["env"]
     assert "VLLM_SERVER_DEV_MODE" not in launch["env"]
     assert "VLLM_DEBUG_MFU_METRICS" not in launch["env"]
+    assert launch["env"]["VLLM_PORT"] == str(pair.prefill_rendezvous_port)
+    assert launch["capture_tail"] is True
     assert pair.prefill_proc is launch["process"]
 
 
@@ -181,6 +186,12 @@ def test_calibration_launch_uses_role_telemetry_and_pd_safe_metrics(
         assert env["CUDA_VISIBLE_DEVICES"] == (
             "0" if role == "prefill" else "1"
         )
+        assert env["VLLM_PORT"] == str(
+            pair.prefill_rendezvous_port
+            if role == "prefill"
+            else pair.decode_rendezvous_port
+        )
+        assert launch["capture_tail"] is True
         kv_index = command.index("--kv-transfer-config")
         assert json.loads(command[kv_index + 1]) == {
             "kv_connector": "NixlConnector",
@@ -189,3 +200,64 @@ def test_calibration_launch_uses_role_telemetry_and_pd_safe_metrics(
 
     assert pair.prefill_proc is launches[0]["process"]
     assert pair.decode_proc is launches[1]["process"]
+
+
+def test_pd_delayed_bind_port_blocks_are_disjoint_and_non_ephemeral():
+    api = pd_module._claim_free_delayed_bind_port_block(2)
+    prefill = pd_module._claim_free_delayed_bind_port_block(
+        pd_module._VLLM_RENDEZVOUS_PORT_BLOCK_SIZE
+    )
+    decode = pd_module._claim_free_delayed_bind_port_block(
+        pd_module._VLLM_RENDEZVOUS_PORT_BLOCK_SIZE
+    )
+    side = pd_module._find_free_nixl_side_port()
+
+    candidates = set(pd_module._nixl_side_port_candidates())
+    assert len(api) == 2
+    assert len(set(api)) == 2
+    assert len(prefill) == len(decode) == 8
+    assert set(api).isdisjoint(prefill)
+    assert set(api).isdisjoint(decode)
+    assert set(prefill).isdisjoint(decode)
+    assert side not in set(api) | set(prefill) | set(decode)
+    assert set(api) | set(prefill) | set(decode) | {side} <= candidates
+
+
+def test_pd_constructor_claims_one_distinct_api_port_pair(monkeypatch):
+    claims = iter(
+        [
+            (61_100, 61_101),
+            tuple(range(61_110, 61_118)),
+            tuple(range(61_120, 61_128)),
+        ]
+    )
+    claim_sizes = []
+
+    def fake_claim(count):
+        claim_sizes.append(count)
+        ports = next(claims)
+        assert len(ports) == count
+        return ports
+
+    side_ports = iter((61_130, 61_131))
+    monkeypatch.setattr(
+        pd_module, "_claim_free_delayed_bind_port_block", fake_claim
+    )
+    monkeypatch.setattr(
+        pd_module, "_find_free_nixl_side_port", lambda: next(side_ports)
+    )
+    monkeypatch.setattr(VllmPdPair, "_launch_engine", lambda *_args: None)
+    monkeypatch.setattr(pd_module, "_wait_for_health", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        pd_module,
+        "_resolve_served_max_model_len",
+        lambda *_args, **_kwargs: 32_768,
+    )
+
+    pair = VllmPdPair(VllmPdPairKey(model="Qwen/Test"))
+
+    assert claim_sizes == [2, 8, 8]
+    assert pair.api_ports == (61_100, 61_101)
+    assert pair.prefill_port == 61_100
+    assert pair.decode_port == 61_101
+    assert pair.prefill_port != pair.decode_port

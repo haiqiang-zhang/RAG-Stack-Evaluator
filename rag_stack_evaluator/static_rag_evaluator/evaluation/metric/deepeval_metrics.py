@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import os
 from typing import Any, List, Optional
 
@@ -67,6 +68,7 @@ from rag_stack.ai_clients import get_ai_client
 from rag_stack.ai_clients.base import AIClient
 from rag_stack_evaluator.static_rag_evaluator.evaluation.metric.util import autorag_metric_loop
 from rag_stack_evaluator.static_rag_evaluator.schema.metricinput import MetricInput
+from rag_stack_evaluator.static_rag_evaluator.utils.util import convert_inputs_to_list
 
 logger = logging.getLogger("RAG-Stack")
 
@@ -342,6 +344,193 @@ def _measure_batch(
 			close()
 
 
+def _measure_answer_dependent_batch(
+	metric_class,
+	metric_inputs: List[MetricInput],
+	build_case_fn,
+	required_fields: List[str],
+	model: str,
+	threshold: float,
+	ai_client_kwargs: dict,
+	*,
+	empty_retrieval_zero: bool = False,
+) -> List[float]:
+	"""Score answer-dependent metrics without survivor-only aggregation.
+
+	An empty or whitespace-only ``generated_texts`` value is a valid generator
+	outcome and deterministically scores zero.  A genuinely absent/invalid
+	required field is a structural contract violation and aborts the whole
+	metric batch.  This distinction prevents empty generations from becoming
+	``None`` and disappearing from the aggregate while retaining fail-closed
+	behavior for malformed static-GT inputs.
+	"""
+	results: List[Optional[float]] = [None] * len(metric_inputs)
+	judged_inputs: List[MetricInput] = []
+	judged_indices: List[int] = []
+	empty_answer_count = 0
+	empty_retrieval_count = 0
+	invalid_rows: List[tuple[int, List[str]]] = []
+
+	for idx, metric_input in enumerate(metric_inputs):
+		missing = []
+		for field in required_fields:
+			value = getattr(metric_input, field, None)
+			if field == "generated_texts":
+				# Only strings prove that the generator emitted its output field.
+				# Blank strings are handled below as scored outcomes.
+				if not isinstance(value, str):
+					missing.append(field)
+			elif field == "retrieved_contents":
+				# An emitted empty list means a legal no-retrieval outcome.  None,
+				# a non-list value, or malformed non-empty contents remain a hard
+				# structural error.
+				if not isinstance(value, list) or (
+					value and not metric_input.is_fields_notnone([field])
+				):
+					missing.append(field)
+			elif not metric_input.is_fields_notnone([field]):
+				missing.append(field)
+		if missing:
+			invalid_rows.append((idx, missing))
+			continue
+
+		if not metric_input.generated_texts.strip():
+			results[idx] = 0.0
+			empty_answer_count += 1
+		elif empty_retrieval_zero and not metric_input.retrieved_contents:
+			results[idx] = 0.0
+			empty_retrieval_count += 1
+		else:
+			judged_inputs.append(metric_input)
+			judged_indices.append(idx)
+
+	if invalid_rows:
+		first_idx, first_fields = invalid_rows[0]
+		raise ValueError(
+			f"{metric_class.__name__}: structurally missing or invalid required "
+			f"metric inputs for {len(invalid_rows)}/{len(metric_inputs)} rows; "
+			"blank generated_texts is a scored zero, not a missing field. "
+			f"First invalid row={first_idx}, fields={first_fields}"
+		)
+
+	if judged_inputs:
+		judged_scores = _measure_batch(
+			metric_class,
+			judged_inputs,
+			build_case_fn,
+			model,
+			threshold,
+			ai_client_kwargs,
+		)
+		for idx, score in zip(judged_indices, judged_scores):
+			if score is None or not math.isfinite(float(score)):
+				raise RuntimeError(
+					f"{metric_class.__name__}: incomplete answer-dependent metric "
+					f"coverage; row {idx} produced no finite score"
+				)
+			results[idx] = float(score)
+
+	scored_count = sum(score is not None for score in results)
+	logger.info(
+		f"[judge] {metric_class.__name__}: answer coverage "
+		f"scored={scored_count}/{len(results)} judged={len(judged_inputs)} "
+		f"empty_answer_zero={empty_answer_count} "
+		f"empty_retrieval_zero={empty_retrieval_count}"
+	)
+	if scored_count != len(results):
+		raise RuntimeError(
+			f"{metric_class.__name__}: answer-dependent metric coverage "
+			f"is incomplete ({scored_count}/{len(results)})"
+		)
+	return [float(score) for score in results]
+
+
+def _measure_retrieval_context_batch(
+	metric_class,
+	metric_inputs: List[MetricInput],
+	build_case_fn,
+	required_fields: List[str],
+	model: str,
+	threshold: float,
+	ai_client_kwargs: dict,
+) -> List[float]:
+	"""Score every context row, with a legal empty retrieval worth zero.
+
+	Only an explicitly emitted ``retrieved_contents=[]`` receives the
+	deterministic zero.  A missing column becomes ``None`` at the MetricInput
+	boundary and remains a structural error.  Non-empty rows are judged as one
+	complete batch; missing/non-finite judge results abort instead of producing
+	a survivor-only mean.
+	"""
+	results: List[Optional[float]] = [None] * len(metric_inputs)
+	judged_inputs: List[MetricInput] = []
+	judged_indices: List[int] = []
+	empty_retrieval_count = 0
+	invalid_rows: List[tuple[int, List[str]]] = []
+
+	for idx, metric_input in enumerate(metric_inputs):
+		missing = []
+		for field in required_fields:
+			value = getattr(metric_input, field, None)
+			if field == "retrieved_contents":
+				if not isinstance(value, list) or (
+					value and not metric_input.is_fields_notnone([field])
+				):
+					missing.append(field)
+			elif not metric_input.is_fields_notnone([field]):
+				missing.append(field)
+		if missing:
+			invalid_rows.append((idx, missing))
+			continue
+
+		if not metric_input.retrieved_contents:
+			results[idx] = 0.0
+			empty_retrieval_count += 1
+		else:
+			judged_inputs.append(metric_input)
+			judged_indices.append(idx)
+
+	if invalid_rows:
+		first_idx, first_fields = invalid_rows[0]
+		raise ValueError(
+			f"{metric_class.__name__}: structurally missing or invalid required "
+			f"metric inputs for {len(invalid_rows)}/{len(metric_inputs)} rows; "
+			"an emitted empty retrieved_contents list is a scored zero, not a "
+			"missing field. "
+			f"First invalid row={first_idx}, fields={first_fields}"
+		)
+
+	if judged_inputs:
+		judged_scores = _measure_batch(
+			metric_class,
+			judged_inputs,
+			build_case_fn,
+			model,
+			threshold,
+			ai_client_kwargs,
+		)
+		for idx, score in zip(judged_indices, judged_scores):
+			if score is None or not math.isfinite(float(score)):
+				raise RuntimeError(
+					f"{metric_class.__name__}: incomplete retrieval-context metric "
+					f"coverage; row {idx} produced no finite score"
+				)
+			results[idx] = float(score)
+
+	scored_count = sum(score is not None for score in results)
+	logger.info(
+		f"[judge] {metric_class.__name__}: retrieval-context coverage "
+		f"scored={scored_count}/{len(results)} judged={len(judged_inputs)} "
+		f"empty_retrieval_zero={empty_retrieval_count}"
+	)
+	if scored_count != len(results):
+		raise RuntimeError(
+			f"{metric_class.__name__}: retrieval-context metric coverage "
+			f"is incomplete ({scored_count}/{len(results)})"
+		)
+	return [float(score) for score in results]
+
+
 # ---------------------------------------------------------------------------
 # Metric entry points. Each accepts the YAML-declared ``model`` plus arbitrary
 # kwargs that are forwarded to ``get_ai_client``. Common kwargs:
@@ -356,7 +545,7 @@ def _measure_batch(
 #                             ephemeral, extra_config, timeout_s, max_concurrency
 # ---------------------------------------------------------------------------
 
-@autorag_metric_loop(fields_to_check=["query", "generation_gt", "retrieved_contents"])
+@convert_inputs_to_list
 def deepeval_context_precision(
 	metric_inputs: List[MetricInput],
 	model: str = "openai/gpt-4o",
@@ -364,7 +553,7 @@ def deepeval_context_precision(
 	**ai_client_kwargs: Any,
 ) -> List[float]:
 	"""Whether relevant retrieved contexts are ranked higher."""
-	return _measure_batch(
+	return _measure_retrieval_context_batch(
 		ContextualPrecisionMetric,
 		metric_inputs,
 		lambda mi: _build_test_case(
@@ -372,11 +561,12 @@ def deepeval_context_precision(
 			expected_output="\n".join(mi.generation_gt),
 			retrieval_context=mi.retrieved_contents,
 		),
+		["query", "generation_gt", "retrieved_contents"],
 		model, threshold, ai_client_kwargs,
 	)
 
 
-@autorag_metric_loop(fields_to_check=["query", "generation_gt", "retrieved_contents"])
+@convert_inputs_to_list
 def deepeval_context_recall(
 	metric_inputs: List[MetricInput],
 	model: str = "openai/gpt-4o",
@@ -384,7 +574,7 @@ def deepeval_context_recall(
 	**ai_client_kwargs: Any,
 ) -> List[float]:
 	"""Extent to which retrieval_context aligns with expected_output."""
-	return _measure_batch(
+	return _measure_retrieval_context_batch(
 		ContextualRecallMetric,
 		metric_inputs,
 		lambda mi: _build_test_case(
@@ -392,6 +582,7 @@ def deepeval_context_recall(
 			expected_output="\n".join(mi.generation_gt),
 			retrieval_context=mi.retrieved_contents,
 		),
+		["query", "generation_gt", "retrieved_contents"],
 		model, threshold, ai_client_kwargs,
 	)
 
@@ -435,7 +626,7 @@ def deepeval_answer_relevancy(
 	)
 
 
-@autorag_metric_loop(fields_to_check=["query", "generated_texts", "retrieved_contents"])
+@convert_inputs_to_list
 def deepeval_faithfulness(
 	metric_inputs: List[MetricInput],
 	model: str = "openai/gpt-4o",
@@ -443,7 +634,7 @@ def deepeval_faithfulness(
 	**ai_client_kwargs: Any,
 ) -> List[float]:
 	"""Whether actual_output factually aligns with retrieval_context."""
-	return _measure_batch(
+	return _measure_answer_dependent_batch(
 		FaithfulnessMetric,
 		metric_inputs,
 		lambda mi: _build_test_case(
@@ -451,11 +642,13 @@ def deepeval_faithfulness(
 			actual_output=mi.generated_texts,
 			retrieval_context=mi.retrieved_contents,
 		),
+		["query", "generated_texts", "retrieved_contents"],
 		model, threshold, ai_client_kwargs,
+		empty_retrieval_zero=True,
 	)
 
 
-@autorag_metric_loop(fields_to_check=["query", "generated_texts", "generation_gt"])
+@convert_inputs_to_list
 def deepeval_answer_correctness(
 	metric_inputs: List[MetricInput],
 	model: str = "openai/gpt-4o",
@@ -475,7 +668,7 @@ def deepeval_answer_correctness(
 	(which only checks topical relatedness to the query, ignoring whether
 	the answer is right).
 	"""
-	return _measure_batch(
+	return _measure_answer_dependent_batch(
 		_AnswerCorrectnessMetric,
 		metric_inputs,
 		lambda mi: _build_test_case(
@@ -483,5 +676,6 @@ def deepeval_answer_correctness(
 			actual_output=mi.generated_texts,
 			expected_output="\n".join(mi.generation_gt),
 		),
+		["query", "generated_texts", "generation_gt"],
 		model, threshold, ai_client_kwargs,
 	)

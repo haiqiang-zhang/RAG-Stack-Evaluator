@@ -31,7 +31,7 @@ _SAMPLING_FIELDS = frozenset({
     "sample_queries",
     "population_scope",
 })
-_QUERY_FIELDS = frozenset({"invocation_id", "calls"})
+_QUERY_FIELDS = frozenset({"invocation_id", "source_question_id", "calls"})
 
 
 def _positive_int(value: Any, *, field: str) -> int:
@@ -74,6 +74,7 @@ def make_performance_trace_envelope(
     traces: Sequence[list[dict]],
     *,
     invocation_ids: Sequence[Any],
+    source_question_ids: Sequence[Any] | None = None,
     capacity: int,
     population_queries: int,
 ) -> dict[str, Any]:
@@ -90,6 +91,14 @@ def make_performance_trace_envelope(
         raise ValueError(
             "performance trace invocation_ids/traces cardinality mismatch "
             f"({len(ids)} != {len(trace_list)})"
+        )
+    source_ids = (
+        None if source_question_ids is None else list(source_question_ids)
+    )
+    if source_ids is not None and len(source_ids) != len(trace_list):
+        raise ValueError(
+            "performance trace source_question_ids/traces cardinality "
+            f"mismatch ({len(source_ids)} != {len(trace_list)})"
         )
     capacity = _positive_int(capacity, field="sampling.capacity")
     population_queries = _positive_int(
@@ -126,9 +135,13 @@ def make_performance_trace_envelope(
         "queries": [
             {
                 "invocation_id": query["invocation_id"],
+                **(
+                    {"source_question_id": source_ids[index]}
+                    if source_ids is not None else {}
+                ),
                 "calls": query["calls"],
             }
-            for query in projected["queries"]
+            for index, query in enumerate(projected["queries"])
         ],
     }
     validate_performance_trace_envelope(envelope)
@@ -195,6 +208,7 @@ def validate_performance_trace_envelope(envelope: Any) -> None:
     invocation_ids: list[Any] = []
     traces: list[list[dict]] = []
     seen: set[Any] = set()
+    source_lineage_present: list[bool] = []
     for position, query in enumerate(queries):
         if not isinstance(query, dict):
             raise TypeError(f"performance trace query {position} must be an object")
@@ -220,6 +234,23 @@ def validate_performance_trace_envelope(envelope: Any) -> None:
                 f"performance trace has duplicate invocation_id={invocation_id!r}"
             )
         seen.add(invocation_id)
+        source_question_id = query.get("source_question_id")
+        source_lineage_present.append(source_question_id is not None)
+        if source_question_id is not None:
+            if (
+                isinstance(source_question_id, str)
+                and not source_question_id.strip()
+            ):
+                raise ValueError(
+                    f"performance trace query {position} has an empty "
+                    "source_question_id"
+                )
+            try:
+                hash(source_question_id)
+            except TypeError as exc:
+                raise TypeError(
+                    "performance trace source_question_id must be hashable"
+                ) from exc
         calls = query.get("calls")
         if not isinstance(calls, list) or not calls:
             raise ValueError(
@@ -228,6 +259,12 @@ def validate_performance_trace_envelope(envelope: Any) -> None:
         invocation_ids.append(invocation_id)
         traces.append(calls)
 
+    if any(source_lineage_present) and not all(source_lineage_present):
+        raise ValueError(
+            "performance trace source_question_id must be present for every "
+            "sample query or absent for the complete legacy artifact"
+        )
+
     # Defence in depth for the EXACT original call objects: call whitelists,
     # stage taxonomy, terminal completeness, and step order all fail closed.
     _validate_calls_strict(traces, invocation_ids)
@@ -235,12 +272,18 @@ def validate_performance_trace_envelope(envelope: Any) -> None:
 
 def performance_trace_calls(
     envelope: Any,
-) -> tuple[list[list[dict]], list[Any]]:
-    """Return validated calls/identities for an explicit consumer adapter."""
+) -> tuple[list[list[dict]], list[Any], list[Any | None]]:
+    """Return calls, invocation IDs, and stable source-question lineage.
+
+    A legacy count-only artifact has ``None`` for every source identity.  A
+    CM adapter must reject or explicitly disable APC for that artifact; it may
+    not invent identities from sample position or parse/modulo invocation IDs.
+    """
 
     validate_performance_trace_envelope(envelope)
     queries = envelope["queries"]
     return (
         [query["calls"] for query in queries],
         [query["invocation_id"] for query in queries],
+        [query.get("source_question_id") for query in queries],
     )

@@ -1,6 +1,7 @@
 """CPU-only contracts for transient vLLM startup-port failures."""
 
 from collections import deque
+import io
 
 import pytest
 
@@ -12,6 +13,10 @@ from rag_stack_evaluator.static_rag_evaluator.measured.vllm_deployment import (
 )
 from rag_stack_evaluator.static_rag_evaluator.measured.vllm_subprocess import (
     RetryableVllmStartupError,
+    VllmStartupKey,
+    VllmSubprocess,
+    _retryable_startup_port_failure,
+    _start_output_tee,
     _wait_for_health,
 )
 from rag_stack.types import EvalType
@@ -62,6 +67,72 @@ def test_health_wait_drains_late_eaddrinuse_line_before_generic_exit(monkeypatch
 
     with pytest.raises(RetryableVllmStartupError, match="EADDRINUSE"):
         _wait_for_health("http://127.0.0.1:1", timeout_s=0.01, proc=proc)
+
+
+def test_startup_port_marker_survives_bounded_tail_eviction(monkeypatch):
+    class _StreamProcess:
+        def __init__(self):
+            self.stdout = io.StringIO(
+                "DistNetworkError: address already in use\n"
+                + "".join(f"traceback line {index}\n" for index in range(20))
+            )
+
+    proc = _StreamProcess()
+    tail = deque(maxlen=2)
+    monkeypatch.setattr(subprocess_module.sys, "stderr", io.StringIO())
+
+    thread = _start_output_tee(proc, "test", None, tail)
+    assert thread is not None
+    thread.join(timeout=1.0)
+
+    assert list(tail) == ["traceback line 18\n", "traceback line 19\n"]
+    assert "address already in use" in _retryable_startup_port_failure(proc)
+
+
+def test_collocated_vllm_launch_captures_startup_output_tail(monkeypatch):
+    launched = {}
+
+    class _Process:
+        pass
+
+    def launch(cmd, *, env, label, capture_tail=False):
+        launched.update(
+            cmd=cmd,
+            env=env,
+            label=label,
+            capture_tail=capture_tail,
+        )
+        return _Process()
+
+    monkeypatch.setattr(subprocess_module, "_find_free_port", lambda: 43210)
+    monkeypatch.setattr(
+        subprocess_module, "configure_vllm_worker_env", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(subprocess_module, "_popen_with_output_tee", launch)
+    monkeypatch.setattr(
+        subprocess_module, "_wait_for_health", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        subprocess_module,
+        "_resolve_served_max_model_len",
+        lambda *_args, **_kwargs: 4096,
+    )
+    monkeypatch.setattr(
+        "rag_stack_evaluator.static_rag_evaluator.measured.gpu_mem.effective_util",
+        lambda *_args, **_kwargs: 0.8,
+    )
+
+    server = VllmSubprocess(
+        VllmStartupKey(
+            model="Qwen/Test",
+            device="cuda:0",
+            gpu_memory_utilization=0.8,
+        )
+    )
+
+    assert server.proc is not None
+    assert launched["capture_tail"] is True
+    assert launched["label"] == "vllm:cuda:0:43210"
 
 
 class _FailingPdCache:

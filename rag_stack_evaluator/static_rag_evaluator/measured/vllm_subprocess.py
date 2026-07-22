@@ -516,6 +516,9 @@ def _find_free_port() -> int:
 
 def _retryable_startup_port_failure(proc: subprocess.Popen) -> Optional[str]:
 	"""Return the exact captured EADDRINUSE line, if this child emitted one."""
+	persisted = getattr(proc, "_rag_stack_startup_port_failure", None)
+	if isinstance(persisted, str) and persisted:
+		return persisted
 	tail = getattr(proc, "_rag_stack_output_tail", ())
 	for line in reversed(tuple(tail)):
 		lowered = line.lower()
@@ -603,6 +606,23 @@ def _start_output_tee(
 					)
 			for line in stream:
 				output_tail.append(line)
+				# A failed distributed launch can print thousands of traceback
+				# lines after the first EADDRINUSE diagnostic.  Retain the first
+				# exact marker separately so bounded-tail eviction cannot turn an
+				# infrastructure port race into a deployment-invalid result.
+				lowered = line.lower()
+				if (
+					getattr(proc, "_rag_stack_startup_port_failure", None) is None
+					and any(
+						marker in lowered
+						for marker in _STARTUP_ADDRESS_IN_USE_MARKERS
+					)
+				):
+					setattr(
+						proc,
+						"_rag_stack_startup_port_failure",
+						line.strip(),
+					)
 				try:
 					sys.stderr.write(line)
 					sys.stderr.flush()
@@ -776,9 +796,9 @@ def _popen_with_output_tee(
 		errors="replace",
 		start_new_session=True,
 	)
-	# P/D health checks are sequential: retain enough startup output for the
-	# second engine's early failure to survive while the first engine becomes
-	# healthy.  This remains bounded and is discarded with the process object.
+	# Retain bounded startup output for health classification.  The exact
+	# EADDRINUSE marker is also persisted separately by the tee thread, so a
+	# long distributed traceback cannot evict it.
 	output_tail: deque[str] = deque(maxlen=_STARTUP_OUTPUT_TAIL_LINES)
 	setattr(proc, "_rag_stack_output_tail", output_tail)
 	thread = _start_output_tee(proc, label, log_path, output_tail)
@@ -911,6 +931,7 @@ class VllmSubprocess:
 			cmd,
 			env=env,
 			label=f"vllm:{key.device}:{self.port}",
+			capture_tail=True,
 		)
 		try:
 			_wait_for_health(f"http://127.0.0.1:{self.port}", proc=self.proc)

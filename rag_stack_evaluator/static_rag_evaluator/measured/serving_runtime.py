@@ -2021,6 +2021,7 @@ class MeasuredServingRuntime:
 		admission_order = _BalancedDatasetAdmissionOrder(self.n_rows)
 		first_by_idx: Dict[int, pd.DataFrame] = {}
 		first_qid_by_idx: Dict[int, Any] = {}
+		source_question_id_by_qid: Dict[Any, str] = {}
 		quality_trace_keep_qids: set[Any] = set()
 		quality_trace_candidate_admissions = 0
 		performance_trace_reservoir = _DeterministicTraceReservoir(
@@ -2032,9 +2033,12 @@ class MeasuredServingRuntime:
 		quality_complete_event = asyncio.Event()
 
 		def _discard_trace_qids(qids: List[Any]) -> None:
-			if recorder is None or not qids:
+			if not qids:
 				return
-			recorder.discard_qids(qids, require_all=False)
+			if recorder is not None:
+				recorder.discard_qids(qids, require_all=False)
+			for qid in qids:
+				source_question_id_by_qid.pop(qid, None)
 
 		def _maybe_freeze_snapshot() -> None:
 			if len(first_by_idx) < self.n_rows:
@@ -2054,6 +2058,7 @@ class MeasuredServingRuntime:
 			seq = next_seq
 			next_seq += 1
 			qid = f"final-{seq}"
+			source_question_id_by_qid[qid] = str(idx)
 			row["__qid__"] = qid
 			return RequestState(
 				seq=seq,
@@ -2269,6 +2274,7 @@ class MeasuredServingRuntime:
 					quality_trace_candidate_admissions += 1
 			row = self.qa_data.iloc[[idx]].copy().reset_index(drop=True)
 			qid = f"measured-{seq}" if is_measured_admission else f"warmup-{seq}"
+			source_question_id_by_qid[qid] = str(idx)
 			row["__qid__"] = qid
 			return RequestState(
 				seq=seq,
@@ -3561,6 +3567,10 @@ class MeasuredServingRuntime:
 			performance_execution_trace = make_performance_trace_envelope(
 				performance_trace_calls,
 				invocation_ids=performance_trace_selected_qids,
+				source_question_ids=[
+					source_question_id_by_qid[qid]
+					for qid in performance_trace_selected_qids
+				],
 				capacity=_PERFORMANCE_TRACE_SAMPLE_CAPACITY,
 				population_queries=len(perfs),
 			)

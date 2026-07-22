@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
-from rag_stack_evaluator.static_rag_evaluator.nodes.generator.vllm_api import VllmAPI
+from rag_stack_evaluator.static_rag_evaluator.nodes.generator.vllm_api import (
+	VllmAPI,
+	normalize_vllm_server_uri,
+)
+
+
+def test_server_root_accepts_root_or_openai_base_url():
+	assert normalize_vllm_server_uri("http://gateway:8000") == "http://gateway:8000"
+	assert normalize_vllm_server_uri("http://gateway:8000/v1/") == "http://gateway:8000"
+	assert (
+		normalize_vllm_server_uri("https://proxy.example/rag/v1")
+		== "https://proxy.example/rag"
+	)
 
 
 def test_max_model_length_matches_requested_model(monkeypatch):

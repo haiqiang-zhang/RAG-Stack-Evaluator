@@ -9,6 +9,7 @@ import time
 import pandas as pd
 import requests
 from asyncio import to_thread
+from urllib.parse import urlsplit, urlunsplit
 
 from rag_stack_evaluator.static_rag_evaluator.nodes.generator.base import BaseGenerator
 from rag_stack_evaluator.static_rag_evaluator.utils.util import get_event_loop, process_batch, result_to_dataframe
@@ -16,6 +17,27 @@ from rag_stack_evaluator.static_rag_evaluator.utils.util import get_event_loop, 
 logger = logging.getLogger("RAG-Stack")
 
 DEFAULT_MAX_TOKENS = 4096  # Default token limit
+
+
+def normalize_vllm_server_uri(uri: str) -> str:
+	"""Return the server root for OpenAI-compatible and native vLLM routes.
+
+	Configuration often calls the OpenAI endpoint ``base_url`` and therefore
+	includes a terminal ``/v1``.  This client also needs vLLM's root-level
+	``/tokenize`` and ``/detokenize`` routes, so store one unambiguous server
+	root and append each API route exactly once at its call site.
+	"""
+	expanded = os.path.expandvars(str(uri)).rstrip("/")
+	parts = urlsplit(expanded)
+	if "$" in expanded or parts.scheme not in ("http", "https") or not parts.netloc:
+		raise ValueError(
+			"vllm_api uri did not resolve to an HTTP endpoint: "
+			f"{uri!r}. Set RAG_LLM_BASE_URL on the optimizer host."
+		)
+	path = parts.path
+	if path.endswith("/v1"):
+		path = path[:-3]
+	return urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
 
 
 class VllmAPI(BaseGenerator):
@@ -43,12 +65,7 @@ class VllmAPI(BaseGenerator):
 		"""
 		super().__init__(project_dir, model, *args, **kwargs)
 		assert batch > 0, "Batch size must be greater than 0."
-		self.uri = os.path.expandvars(str(uri)).rstrip("/")
-		if "$" in self.uri or not self.uri.startswith(("http://", "https://")):
-			raise ValueError(
-				"vllm_api uri did not resolve to an HTTP endpoint: "
-				f"{uri!r}. Set RAG_LLM_BASE_URL on the optimizer host."
-			)
+		self.uri = normalize_vllm_server_uri(uri)
 		self.batch = batch
 		self.request_timeout = float(request_timeout)
 		# Use the provided max_tokens if available, otherwise use the default

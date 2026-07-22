@@ -54,6 +54,17 @@ TRANSPORT_ONLY_PARAMS = frozenset({
     "uri", "batch", "request_timeout", "project_dir", "gpu_memory_utilization",
 })
 
+# ``Vllm`` and ``VllmAPI`` are two transports for the same production
+# generation contract: the same model and sampling parameters are served via
+# OpenAI-compatible ``/v1/chat/completions``.  A transport class name must not
+# split a content/semantics identity (the transport-specific fields above are
+# already excluded for the same reason).  Keep this allow-list deliberately
+# narrow so unrelated generator implementations never collapse together.
+_V1_CHAT_TRANSPORT_MODULES = frozenset({
+    "Vllm", "VllmAPI", "vllm", "vllm_api",
+})
+_V1_CHAT_SEMANTIC_MODULE = "vllm_v1_chat"
+
 
 def enabled() -> bool:
     return os.environ.get(_ENV_FLAG, "") == "1"
@@ -67,6 +78,15 @@ def _canon(v: Any) -> Any:
     if isinstance(v, float) and v.is_integer():
         return int(v)
     return v
+
+
+def _semantic_module_name(module_name: str) -> str:
+    """Remove deployment transport from a generator semantic identity."""
+    name = str(module_name)
+    leaf = name.rsplit(".", 1)[-1]
+    if leaf in _V1_CHAT_TRANSPORT_MODULES:
+        return _V1_CHAT_SEMANTIC_MODULE
+    return name
 
 
 def fingerprint(
@@ -86,7 +106,7 @@ def fingerprint(
             "queries": [str(q) for q in queries],
             "contexts": _canon(contexts),
             "prompts": [str(p) for p in prompts],
-            "module": module_name,
+            "module": _semantic_module_name(module_name),
             "param": sem_param,
         },
         sort_keys=True,

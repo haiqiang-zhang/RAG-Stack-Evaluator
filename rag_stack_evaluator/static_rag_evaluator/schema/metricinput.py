@@ -64,13 +64,33 @@ class MetricInput:
 					value = row[attr_name]
 
 					if isinstance(value, str):
+						stripped = value.strip()
+						# An emitted-but-empty answer is a real generator outcome,
+						# not a structurally missing field.  Answer-dependent quality
+						# metrics must score it as zero instead of silently dropping the
+						# row from their aggregate.  Keep the old empty->None semantics
+						# for every other field so retrieval/context metrics are
+						# unchanged.
 						setattr(
 							instance,
 							attr_name,
-							value.strip() if value.strip() != "" else None,
+							stripped
+							if attr_name == "generated_texts" or stripped != ""
+							else None,
 						)
 					elif isinstance(value, list):
-						setattr(instance, attr_name, value if len(value) > 0 else None)
+						# ReAct may legitimately finish without issuing a Search.  The
+						# evaluator still emits the retrieval field for that row, with an
+						# empty list.  Preserve that presence marker so context-dependent
+						# metrics can score the no-retrieval outcome as zero while still
+						# rejecting a genuinely absent retrieval column (None).
+						setattr(
+							instance,
+							attr_name,
+							value
+							if value or attr_name == "retrieved_contents"
+							else None,
+						)
 					else:
 						setattr(instance, attr_name, value)
 
