@@ -1,8 +1,9 @@
 # RAG-Stack Evaluator
 
-RAG-Stack Evaluator contains the static quality evaluator, the real-hardware
-measured evaluator, and the vLLM instrumentation used by measured runs. It
-exposes them through its own top-level Python package:
+RAG-Stack Evaluator owns all RAG-Stack evaluator implementations: static
+quality, optional FlashRAG quality, real-hardware measured execution, dataset
+adapters, scoring, trace recording, and vLLM instrumentation. It exposes them
+through its own top-level Python package:
 
 ```python
 from rag_stack_evaluator.static_rag_evaluator import (
@@ -12,7 +13,8 @@ from rag_stack_evaluator.static_rag_evaluator import (
 ```
 
 This distribution owns the `rag_stack_evaluator` package, including
-`rag_stack_evaluator.static_rag_evaluator` and
+`rag_stack_evaluator.static_rag_evaluator`,
+`rag_stack_evaluator.flashrag_quality_evaluator`, and
 `rag_stack_evaluator.vllm_instrumentation`. It does not contribute modules to
 the host's `rag_stack` namespace.
 
@@ -21,6 +23,35 @@ for the host package. The evaluator continues to consume RAG-Stack's shared
 dataset, IR, layout, security, and cost-model contracts through `rag_stack.*`.
 Install and run it through a compatible RAG-Stack checkout; the direct install
 commands below are for developing the submodule in that host environment.
+RAG-Stack owns optimization, search-space resolution, cost models, and shared
+contracts. Backend implementations and their unit tests are maintained here.
+The optional FlashRAG fork is pinned as this project's nested `FlashRAG`
+submodule, with installation and runtime details in the
+[FlashRAG guide](docs/flashrag.md).
+
+## Backend selection
+
+The shared interface is `rag_stack_evaluator.base.BaseEvaluator`. The lazy
+factory constructs either backend without duplicating evaluator selection in
+the host:
+
+```python
+from rag_stack_evaluator.factory import create_quality_evaluator
+
+evaluator = create_quality_evaluator(
+    dataset_manager=dataset_manager,
+    project_dir=dataset_manager.project_dir,
+    backend="static_gt",  # Default; select "flashrag" for the optional backend.
+)
+```
+
+`create_quality_evaluator` also accepts `dataset` and `project_dir`, and
+`flashrag_options` for the optional backend. Direct static quality and measured
+imports remain supported. `supported_metrics(backend)` and
+`supported_pipeline_modes(backend)` in the same factory module expose backend
+capabilities for host validation without importing optional FlashRAG runtime
+modules. See the [FlashRAG guide](docs/flashrag.md) for its separate settings and
+execution contract.
 
 ## Installation
 
@@ -47,6 +78,9 @@ uv pip install --torch-backend cu128 \
   -e 'RAG-Stack-Evaluator[cu12]' -e '.[cu12]'
 # On NVIDIA driver >=580, use --torch-backend cu130 and cu13 in both
 # editable requirements instead.
+
+# Optional: only for global.eval_backend: flashrag.
+uv pip install -e RAG-Stack-Evaluator/FlashRAG
 ```
 
 The commands below are only for developing this submodule after the compatible
@@ -62,6 +96,10 @@ uv pip install --torch-backend cu128 -e '.[cu12,faiss]'
 
 # NVIDIA driver >=580.
 uv pip install --torch-backend cu130 -e '.[cu13,faiss]'
+
+# Optional FlashRAG backend, from this evaluator repository root.
+git submodule update --init --recursive FlashRAG
+uv pip install -e FlashRAG
 ```
 
 Do not install the `cu12` and `cu13` extras together. Native benchmark
@@ -103,9 +141,12 @@ to the gateway itself.
 
 ## Input Contract
 
-This section defines the evaluator's single public input contract. Inputs
-outside this contract are caller errors even if a particular implementation
-happens to accept them.
+This section defines the static quality and measured evaluation input
+contract. Inputs outside this contract are caller errors even if a particular
+implementation happens to accept them. The optional FlashRAG quality backend
+uses the [FlashRAG contract](docs/flashrag.md#resolved-input-contract); it shares
+the resolved pipeline boundary and canonical trace format, but uses its own
+method settings and native metrics. `static_gt` remains the default backend.
 
 ### 1. Resolved pipeline config only
 

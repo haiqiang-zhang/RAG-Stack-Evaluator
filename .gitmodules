@@ -1,0 +1,3 @@
+[submodule "FlashRAG"]
+	path = FlashRAG
+	url = https://github.com/haiqiang-zhang/FlashRAG.git

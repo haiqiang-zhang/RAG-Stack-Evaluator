@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 import pandas as pd
 import yaml
 
-from rag_stack.base_evaluator import BaseEvaluator
+from rag_stack_evaluator.base import BaseEvaluator
 from rag_stack_evaluator.static_rag_evaluator.cache_paths import faiss_index_root
 from rag_stack_evaluator.static_rag_evaluator.evaluation.generation import (
 	GENERATION_METRIC_FUNC_DICT,
