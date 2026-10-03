@@ -38,6 +38,10 @@ sequential generator node).
 """
 from __future__ import annotations
 
+from rag_stack_evaluator.generation_protocol import (
+    LEGACY_COMPLETION, resolve_generation_protocol,
+)
+
 import hashlib
 import json
 import logging
@@ -80,11 +84,16 @@ def _canon(v: Any) -> Any:
     return v
 
 
-def _semantic_module_name(module_name: str) -> str:
+def _semantic_module_name(module_name: str, module_param: dict | None = None) -> str:
     """Remove deployment transport from a generator semantic identity."""
     name = str(module_name)
     leaf = name.rsplit(".", 1)[-1]
     if leaf in _V1_CHAT_TRANSPORT_MODULES:
+        protocol = resolve_generation_protocol(
+            module_param or {}, allow_legacy=leaf in {"Vllm", "vllm"},
+        )
+        if protocol == LEGACY_COMPLETION:
+            return "vllm_legacy_completion"
         return _V1_CHAT_SEMANTIC_MODULE
     return name
 
@@ -106,7 +115,7 @@ def fingerprint(
             "queries": [str(q) for q in queries],
             "contexts": _canon(contexts),
             "prompts": [str(p) for p in prompts],
-            "module": _semantic_module_name(module_name),
+            "module": _semantic_module_name(module_name, module_param),
             "param": sem_param,
         },
         sort_keys=True,
@@ -147,10 +156,13 @@ def save_answers(
     token_counts: List[int],
     donor: str,
 ) -> Optional[str]:
-    """Phase-1 write at donor generation time (atomic; never overwrites a
-    complete record)."""
+    """Atomically save fresh answers, preserving an already complete donor.
+
+    A retry after failed judging must replace incomplete answers, so its later
+    quality attachment describes this generation rather than the failed one.
+    """
     path = record_path(project_dir, fp)
-    if os.path.isfile(path):
+    if load_complete_record(project_dir, fp) is not None:
         return path
     try:
         os.makedirs(_store_dir(project_dir), exist_ok=True)

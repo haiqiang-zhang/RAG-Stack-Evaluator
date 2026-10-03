@@ -1,6 +1,8 @@
 # Portions derived from AutoRAG (https://github.com/Marker-Inc-Korea/AutoRAG), Apache-2.0.
 # Modified by the RAG-Stack authors for namespace and runtime integration; see LICENSE.autorag and NOTICE.
 
+from rag_stack_evaluator.generation_protocol import resolve_generation_protocol
+
 import logging
 import os
 from typing import List, Tuple, Dict, Union
@@ -63,6 +65,7 @@ class VllmAPI(BaseGenerator):
 		:param batch: Request batch size.
 		    Default is 16.
 		"""
+		resolve_generation_protocol(kwargs)
 		super().__init__(project_dir, model, *args, **kwargs)
 		assert batch > 0, "Batch size must be greater than 0."
 		self.uri = normalize_vllm_server_uri(uri)
@@ -150,6 +153,15 @@ class VllmAPI(BaseGenerator):
 			"logprobs": True,
 			"n": 1,
 		}
+		# ReAct must stop each reasoning round before a fabricated Observation.
+		# Preserve the same explicit sampling controls as measured serving when
+		# a frozen pipeline is replayed through an OpenAI-compatible endpoint.
+		if kwargs.get("stop"):
+			payload["stop"] = kwargs["stop"]
+		if kwargs.get("top_p") is not None:
+			payload["top_p"] = float(kwargs["top_p"])
+		if kwargs.get("ignore_eos") is not None:
+			payload["ignore_eos"] = bool(kwargs["ignore_eos"])
 		start_time = time.time()  # Record request start time
 		response = requests.post(
 			f"{self.uri}/v1/chat/completions",

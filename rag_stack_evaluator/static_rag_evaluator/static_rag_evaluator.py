@@ -6,8 +6,9 @@ import json
 import os
 import shutil
 import time
+import uuid
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -48,6 +49,9 @@ from rag_stack_evaluator.static_rag_evaluator.schema.node import (
 	extract_values_from_nodes_strategy,
 )
 from rag_stack_evaluator.static_rag_evaluator.schema.metricinput import MetricInput
+from rag_stack_evaluator.static_rag_evaluator.evaluation.metric.judge_integrity import (
+	GUARD_VERSION, atomic_json, json_hash,
+)
 from rag_stack_evaluator.static_rag_evaluator.utils.cast import cast_retrieved_contents
 from rag_stack_evaluator.static_rag_evaluator.utils.util import (
 	convert_env_in_dict,
@@ -574,6 +578,13 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 				)
 				quality = {}
 			else:
+				# The final per-query inputs exist for every dataflow, including
+				# ReAct, which has no node parquet outputs. Preserve them before
+				# judging so retries and later audits never depend on reconstruction
+				# from token-count traces. Each attempt has its own immutable folder.
+				evaluation_config = dict(evaluation_config)
+				audit_dir = os.path.join(run_dir, "judge_audit", uuid.uuid4().hex)
+				evaluation_config["_judge_audit_dir"] = audit_dir
 				logger.info(
 					f"[pipeline] final scoring start: last_node={last_node_type} "
 					f"metrics={metric_names}"
@@ -592,8 +603,13 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 					if rec is not None:
 						_donor_quality = dict(rec["quality"])
 				if _donor_quality is not None:
+					self._persist_final_metric_inputs(previous_result, evaluation_config, run_dir, audit_dir=audit_dir)
 					quality = _donor_quality
 					quality["__fp_hit__"] = str(_hit.get("donor", "?"))
+					atomic_json(os.path.join(audit_dir, "quality_reuse.json"), {
+						"fingerprint": _hit["fp"], "donor": _hit.get("donor"),
+						"quality": _donor_quality,
+					})
 					logger.info(
 						f"[pipeline] final scoring SKIPPED (fingerprint hit, "
 						f"donor={_hit.get('donor', '?')}); quality inherited: "
@@ -1166,6 +1182,11 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 
 		metric_func_dict = self._ALL_METRIC_FUNC_DICT
 		metric_inputs = self._create_metric_inputs(final_result, evaluation_config)
+		if evaluation_config.get("_judge_audit_dir"):
+			self._persist_final_metric_inputs(
+				final_result, evaluation_config, None,
+				audit_dir=evaluation_config["_judge_audit_dir"], metric_inputs=metric_inputs,
+			)
 		metric_names, metric_params = cast_metrics(metrics)
 
 		# DeepEval metrics already manage per-test-case async execution via
@@ -1198,6 +1219,9 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 
 		def _run(job):
 			name, param = job
+			param = dict(param)
+			if name.startswith("deepeval_") and evaluation_config.get("_judge_audit_dir"):
+				param["judge_audit_dir"] = evaluation_config["_judge_audit_dir"]
 			mi = metric_inputs
 			if (subset_n > 0 and name.startswith("deepeval_")
 					and name not in obj_metric_names and len(metric_inputs) > subset_n):
@@ -1213,6 +1237,11 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 				sum(valid_scores) / len(valid_scores)
 				if (strategy == "mean" and valid_scores) else None
 			)
+			if evaluation_config.get("_judge_audit_dir"):
+				atomic_json(os.path.join(evaluation_config["_judge_audit_dir"], name + "_scores.json"), {
+					"metric": name, "scores": [float(s) if s is not None and pd.notna(s) else None for s in scores],
+					"mean": all_scores[name], "guard_version": GUARD_VERSION,
+				})
 
 		all_scores = {}
 		if local_jobs:
@@ -1230,6 +1259,18 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 
 		return all_scores
 
+	def _persist_final_metric_inputs(self, final_result, evaluation_config, run_dir, *, audit_dir=None, metric_inputs=None):
+		"""Save the actual per-query scoring inputs for every pipeline dataflow."""
+		audit_dir = audit_dir or os.path.join(run_dir, "judge_audit", uuid.uuid4().hex)
+		if metric_inputs is None:
+			metric_inputs = self._create_metric_inputs(final_result, evaluation_config)
+		records = [asdict(mi) for mi in metric_inputs]
+		atomic_json(os.path.join(audit_dir, "metric_inputs.json"), {
+			"guard_version": GUARD_VERSION,
+			"rows_sha256": json_hash(records), "rows": records,
+		})
+		return audit_dir
+
 	def _create_metric_inputs(self, final_result: pd.DataFrame, evaluation_config: dict) -> List[MetricInput]:
 		"""
 		Create MetricInput objects by combining the QA ground truth data
@@ -1246,7 +1287,7 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 		"""
 		gt_cols = [
 			c for c in [
-				"query", "generation_gt",
+				"qid", "query", "generation_gt",
 				"retrieval_gt_contents", "references", "keypoints",
 			] if c in self.qa_data.columns
 		]

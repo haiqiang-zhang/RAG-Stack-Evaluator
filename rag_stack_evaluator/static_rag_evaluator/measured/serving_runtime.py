@@ -695,6 +695,28 @@ def _phase_wall_cap_s(system_config: Dict[str, Any], phase: str) -> float:
 		return default
 
 
+def _warmup_abort_deadline_s(reference_cap: float) -> float:
+	"""Allow extra gate-observation time without changing the warmup policy."""
+	if not math.isfinite(reference_cap) or reference_cap <= 0.0:
+		raise ValueError("warmup reference wall cap must be finite and positive")
+	raw = os.environ.get("RAG_STACK_WARMUP_ABORT_DEADLINE_S")
+	if raw is None:
+		return reference_cap
+	try:
+		deadline = float(raw)
+	except (TypeError, ValueError) as exc:
+		raise ValueError(
+			"RAG_STACK_WARMUP_ABORT_DEADLINE_S must be finite and at least "
+			"the warmup reference wall cap"
+		) from exc
+	if not math.isfinite(deadline) or deadline < reference_cap:
+		raise ValueError(
+			"RAG_STACK_WARMUP_ABORT_DEADLINE_S must be finite and at least "
+			"the warmup reference wall cap"
+		)
+	return deadline
+
+
 def _raise_nofile_limit() -> None:
 	try:
 		import os
@@ -2072,8 +2094,19 @@ class MeasuredServingRuntime:
 			)
 
 		warmup_cap = _phase_wall_cap_s(self.system_config, "warmup")
+		warmup_abort_deadline = _warmup_abort_deadline_s(warmup_cap)
 		measured_cap = _phase_wall_cap_s(self.system_config, "measured")
 		warmup_start = time.perf_counter()
+		warmup_original_deadline_probe: Dict[str, Any] = {
+			"scheduled_offset_s": warmup_cap,
+			"observed_offset_s": None,
+			"measurement_already_started": False,
+			"gate_checked": False,
+			"gate_ready": None,
+			"abort_deferred": False,
+		}
+		# Retain diagnostics even when an invalid attempt produces no summary.
+		self._warmup_original_deadline_probe = warmup_original_deadline_probe
 		warmup_completed = 0
 		measurement_started = self.warmup_queries <= 0
 		measurement_start: Optional[float] = warmup_start if measurement_started else None
@@ -2463,13 +2496,13 @@ class MeasuredServingRuntime:
 								if state.qid not in quality_trace_keep_qids:
 									_discard_trace_qids([state.qid])
 								continue
-							if state.done_ts - warmup_start >= warmup_cap:
+							if state.done_ts - warmup_start >= warmup_abort_deadline:
 								# Defensive duplicate of warmup_timer: if the
 								# event loop delayed that task, a late completion
 								# still cannot force-open the window.
 								fail_warmup_locked(
 									"measured_warmup_gate_timeout: "
-									f"cap={warmup_cap:.3f}s "
+									f"cap={warmup_abort_deadline:.3f}s "
 									f"completions={warmup_completed}/"
 									f"{self.warmup_queries} "
 									"workload_support_complete="
@@ -3193,7 +3226,50 @@ class MeasuredServingRuntime:
 		async def warmup_timer() -> None:
 			if self.warmup_queries <= 0:
 				return
+			# Preserve the original policy event and gate-before-abort ordering.
+			# The extra deadline changes only when an unready attempt is aborted.
 			await asyncio.sleep(warmup_cap)
+			async with state_lock:
+				now = time.perf_counter()
+				warmup_original_deadline_probe["observed_offset_s"] = max(
+					0.0, now - warmup_start
+				)
+				warmup_original_deadline_probe["measurement_already_started"] = (
+					measurement_started
+				)
+				if measurement_started or measurement_end is not None:
+					return
+				warmup_original_deadline_probe["gate_checked"] = True
+				ready = _maybe_start_after_warmup_locked(now)
+				warmup_original_deadline_probe["gate_ready"] = ready
+				if ready:
+					return
+				if (
+					warmup_abort_deadline > warmup_cap
+					and now - warmup_start < warmup_abort_deadline
+				):
+					warmup_original_deadline_probe["abort_deferred"] = True
+					logger.info(
+						"[measured service] warmup gate remains unready at "
+						f"reference {warmup_cap:.3f}s; continuing unchanged gates "
+						f"until abort deadline {warmup_abort_deadline:.3f}s"
+					)
+				else:
+					fail_warmup_locked(
+						"measured_warmup_gate_timeout: "
+						f"cap={warmup_abort_deadline:.3f}s "
+						f"completions={warmup_completed}/{self.warmup_queries} "
+						"workload_support_complete="
+						f"{workload_support_complete_warmup_completed is not None} "
+						f"rate_stable={_warmup_rate_stable()} "
+						f"adapter_done={adapter_done} "
+						f"saturation={self._saturation.get('saturated')} "
+						f"evidence={self._saturation.get('evidence')}"
+					)
+					return
+			await asyncio.sleep(max(
+				0.0, warmup_abort_deadline - (time.perf_counter() - warmup_start)
+			))
 			async with state_lock:
 				if measurement_started or measurement_end is not None:
 					return
@@ -3201,7 +3277,7 @@ class MeasuredServingRuntime:
 					return
 				fail_warmup_locked(
 					"measured_warmup_gate_timeout: "
-					f"cap={warmup_cap:.3f}s "
+					f"cap={warmup_abort_deadline:.3f}s "
 					f"completions={warmup_completed}/{self.warmup_queries} "
 					"workload_support_complete="
 					f"{workload_support_complete_warmup_completed is not None} "
@@ -3614,6 +3690,15 @@ class MeasuredServingRuntime:
 		]
 		summary["warmup_completed"] = warmup_completed
 		summary["warmup_wall_cap_s"] = warmup_cap
+		summary["warmup_reference_wall_cap_s"] = warmup_cap
+		summary["warmup_abort_deadline_s"] = warmup_abort_deadline
+		summary["warmup_elapsed_s"] = (
+			max(0.0, measurement_start - warmup_start)
+			if measurement_start is not None else None
+		)
+		summary["warmup_original_deadline_probe"] = dict(
+			warmup_original_deadline_probe
+		)
 		summary["measured_wall_cap_s"] = measured_cap
 		summary["workload_support_gate_required"] = self.warmup_queries > 0
 		summary["workload_support_expected_rows"] = self.n_rows

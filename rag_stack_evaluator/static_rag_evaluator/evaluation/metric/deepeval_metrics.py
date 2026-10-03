@@ -1,4 +1,7 @@
 import asyncio
+import hashlib
+import inspect
+import json
 import logging
 import math
 import os
@@ -22,6 +25,91 @@ from deepeval.metrics import (
 )
 from deepeval.models import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+from deepeval.metrics.contextual_precision.schema import ContextualPrecisionVerdict
+from pathlib import Path
+
+from rag_stack_evaluator.static_rag_evaluator.evaluation.metric.judge_integrity import (
+	GUARD_VERSION, JudgeGuardConfig, atomic_json, count_chat_tokens,
+	exact_verdict_schema, exception_evidence, json_hash, json_value,
+	output_budgets, receipt_path, validate_verdict_count,
+)
+
+
+class _GuardedContextualPrecisionMetric(ContextualPrecisionMetric):
+	"""Preserve DeepEval's rubric and score while requiring every passage verdict."""
+
+	async def _a_generate_verdicts(self, input, expected_output, retrieval_context, multimodal):
+		if multimodal:
+			raise ValueError("The contextual-precision cardinality guard currently requires text contexts")
+		prompt = self.evaluation_template.generate_verdicts(
+			input=input, expected_output=expected_output,
+			retrieval_context=retrieval_context, multimodal=multimodal,
+		)
+		expected = len(retrieval_context)
+		schema = exact_verdict_schema(ContextualPrecisionVerdict, expected)
+		config = getattr(self, "judge_guard_config", JudgeGuardConfig())
+		client = getattr(self.model, "_client", None)
+		defaults = getattr(client, "_default_request_kwargs", {})
+		initial = int(defaults.get("max_tokens", 1024))
+		cap = config.max_output_tokens
+		messages = [{"role": "user", "content": prompt}]
+		prompt_tokens = None
+		if config.context_window is not None:
+			extra = getattr(client, "_request_extra_body", {})
+			prompt_tokens = count_chat_tokens(
+				config.tokenizer_path, messages, extra.get("chat_template_kwargs"),
+			)
+			cap = min(cap, config.context_window - prompt_tokens)
+			if cap <= 0:
+				raise ValueError("Judge prompt fills the configured context window; no output tokens remain")
+		self.judge_guard_evidence = {
+			"version": GUARD_VERSION, "expected_verdicts": expected,
+			"prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+			"schema": schema.model_json_schema(), "prompt_tokens": prompt_tokens,
+			"context_window": config.context_window, "output_cap": cap, "attempts": [],
+		}
+		last_error = None
+		for budget in output_budgets(initial, cap, config.max_attempts):
+			attempt = {"max_tokens": budget}
+			self.judge_guard_evidence["attempts"].append(attempt)
+			try:
+				# Parse mode retains the original prompt and enforces the exact array
+				# length. A generic JSON fallback would add a system/schema message,
+				# invalidating the exact context budget. Retries are owned here so
+				# already-valid cases and correctness scores are not re-judged.
+				result = await self.model.a_generate(
+					prompt, schema=schema, max_tokens=budget,
+					structured_output_mode="parse",
+				)
+				attempt["raw_verdict_output"] = json_value(result)
+				if isinstance(result, str):
+					result = schema.model_validate_json(result)
+				else:
+					result = schema.model_validate(json_value(result))
+				verdicts = list(result.verdicts)
+				validate_verdict_count(verdicts, expected)
+				attempt.update({"returned_verdicts": len(verdicts), "status": "accepted"})
+				return verdicts
+			except Exception as error:
+				last_error = error
+				attempt.update({"status": "rejected", "error": exception_evidence(error)})
+				logger.warning(
+					"[judge] ContextualPrecisionMetric rejected output qid=%s attempt=%s/%s "
+					"max_tokens=%s expected_verdicts=%s: %s",
+					getattr(self, "judge_qid", None), len(self.judge_guard_evidence["attempts"]),
+					config.max_attempts, budget, expected, str(error)[:300],
+				)
+				status = getattr(error, "status_code", None)
+				if status in (400, 401, 402, 403, 404):
+					raise
+			finally:
+				persist = getattr(self, "persist_judge_evidence", None)
+				if persist is not None:
+					persist(self)
+		raise RuntimeError(
+			f"Contextual precision could not obtain {expected} complete verdicts "
+			f"after {config.max_attempts} bounded attempts"
+		) from last_error
 
 
 class _AnswerCorrectnessMetric(GEval):
@@ -112,7 +200,7 @@ class _AIClientDeepEvalAdapter(DeepEvalBaseLLM):
 		"""
 		messages = [{"role": "user", "content": prompt}]
 		coro = (
-			self._client.structured_output(messages, response_format=schema)
+			self._client.structured_output(messages, response_format=schema, **kwargs)
 			if schema is not None
 			else self._client.chat(messages)
 		)
@@ -124,7 +212,7 @@ class _AIClientDeepEvalAdapter(DeepEvalBaseLLM):
 		messages = [{"role": "user", "content": prompt}]
 		if schema is not None:
 			return await self._client.structured_output(
-				messages, response_format=schema
+				messages, response_format=schema, **kwargs
 			)
 		return await self._client.chat(messages)
 
@@ -218,6 +306,13 @@ def _measure_batch(
 	aggregation path.
 	"""
 	ai_client_kwargs = dict(ai_client_kwargs)
+	guard_config = JudgeGuardConfig.pop_from(ai_client_kwargs)
+	audit_dir = ai_client_kwargs.pop("judge_audit_dir", None)
+	case_indices = ai_client_kwargs.pop("_judge_case_indices", list(range(len(metric_inputs))))
+	if (not isinstance(case_indices, list) or len(case_indices) != len(metric_inputs)
+		or any(isinstance(i, bool) or not isinstance(i, int) or i < 0 for i in case_indices)
+		or len(set(case_indices)) != len(case_indices)):
+		raise ValueError("Judge case indices must map each input to a unique original nonnegative index")
 	# Legacy YAMLs may still carry these old rag-stack-side scheduling knobs.
 	# Drop them so DeepEval's own defaults apply and provider clients do not see
 	# unknown keyword arguments.
@@ -274,9 +369,45 @@ def _measure_batch(
 				)
 				if _geval and geval_steps:
 					kw["evaluation_steps"] = list(geval_steps)
-				m = metric_class(**kw)
+				implementation = (
+					_GuardedContextualPrecisionMetric
+					if metric_class is ContextualPrecisionMetric else metric_class
+				)
+				m = implementation(**kw)
+				m.judge_guard_config = guard_config
+				metric_input = metric_inputs[idx]
+				qid = getattr(metric_input, "qid", None)
+				m.judge_qid = qid
+				case_input = {
+					"input": getattr(case, "input", None),
+					"expected_output": getattr(case, "expected_output", None),
+					"actual_output": getattr(case, "actual_output", None),
+					"retrieval_context": getattr(case, "retrieval_context", None),
+				}
+				def persist(metric, error=None):
+					if audit_dir is None:
+						return
+					verdicts = getattr(metric, "verdicts", None)
+					template = getattr(metric, "evaluation_template", None)
+					template_file = inspect.getsourcefile(template) if template is not None else None
+					receipt = {
+						"guard_version": GUARD_VERSION, "metric": metric_class.__name__,
+						"case_index": case_indices[idx], "qid": qid, "input_sha256": json_hash(case_input),
+						"model": adapter.get_model_name(), "score": getattr(metric, "score", None),
+						"retrieval_context_count": len(case_input["retrieval_context"] or []),
+						"verdict_count": len(verdicts) if verdicts is not None else None,
+						"raw_verdicts": json_value(verdicts),
+						"guard": getattr(metric, "judge_guard_evidence", None),
+						"error": error,
+						"template_sha256": hashlib.sha256(Path(template_file).read_bytes()).hexdigest() if template_file else None,
+						"evaluator_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+					}
+					atomic_json(receipt_path(audit_dir, metric_class.__name__, case_indices[idx], qid), receipt)
+				m.persist_judge_evidence = persist
 				try:
 					await m.a_measure(case, _show_indicator=False)
+					if metric_class is ContextualPrecisionMetric:
+						validate_verdict_count(m.verdicts, len(case.retrieval_context))
 					scores[idx] = m.score
 					if _geval and geval_steps is None and getattr(m, "evaluation_steps", None):
 						geval_steps = list(m.evaluation_steps)
@@ -288,6 +419,8 @@ def _measure_batch(
 						pass  # skip: score stays None, not counted as an error
 					else:
 						_errs[idx] = f"{type(e).__name__}: {e}"
+				finally:
+					persist(m, _errs[idx])
 
 		async def _run_all():
 			try:
@@ -414,13 +547,14 @@ def _measure_answer_dependent_batch(
 		)
 
 	if judged_inputs:
+		batch_kwargs = dict(ai_client_kwargs, _judge_case_indices=judged_indices)
 		judged_scores = _measure_batch(
 			metric_class,
 			judged_inputs,
 			build_case_fn,
 			model,
 			threshold,
-			ai_client_kwargs,
+			batch_kwargs,
 		)
 		for idx, score in zip(judged_indices, judged_scores):
 			if score is None or not math.isfinite(float(score)):
@@ -486,6 +620,14 @@ def _measure_retrieval_context_batch(
 		if not metric_input.retrieved_contents:
 			results[idx] = 0.0
 			empty_retrieval_count += 1
+			if ai_client_kwargs.get("judge_audit_dir"):
+				qid = getattr(metric_input, "qid", None)
+				atomic_json(receipt_path(ai_client_kwargs["judge_audit_dir"], metric_class.__name__, idx, qid), {
+					"guard_version": GUARD_VERSION, "metric": metric_class.__name__,
+					"case_index": idx, "qid": qid, "score": 0.0,
+					"kind": "deterministic_empty_retrieval_zero", "retrieval_context_count": 0,
+					"verdict_count": 0, "raw_verdicts": [], "error": None,
+				})
 		else:
 			judged_inputs.append(metric_input)
 			judged_indices.append(idx)
@@ -501,13 +643,14 @@ def _measure_retrieval_context_batch(
 		)
 
 	if judged_inputs:
+		batch_kwargs = dict(ai_client_kwargs, _judge_case_indices=judged_indices)
 		judged_scores = _measure_batch(
 			metric_class,
 			judged_inputs,
 			build_case_fn,
 			model,
 			threshold,
-			ai_client_kwargs,
+			batch_kwargs,
 		)
 		for idx, score in zip(judged_indices, judged_scores):
 			if score is None or not math.isfinite(float(score)):

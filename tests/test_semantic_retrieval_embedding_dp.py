@@ -193,6 +193,8 @@ def test_faiss_timing_wraps_one_parallel_encode_and_one_search():
     )
     store.similarity_metric = "l2"
     store.embedding_dim = 2
+    store.ef_search = 64
+    store._search_lock = threading.RLock()
     store.index = FakeIndex()
     store._idx_to_id = {0: "doc-0"}
 

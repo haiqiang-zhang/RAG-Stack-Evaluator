@@ -14,6 +14,9 @@ from rag_stack_evaluator.static_rag_evaluator.nodes.generator.base import BaseGe
 from rag_stack_evaluator.static_rag_evaluator.utils import result_to_dataframe
 from rag_stack_evaluator.static_rag_evaluator.utils.util import pop_params, to_list, is_chat_prompt
 from rag_stack_evaluator.vllm_env import configure_vllm_worker_env
+from rag_stack_evaluator.generation_protocol import (
+	CHAT_COMPLETIONS, LEGACY_COMPLETION, resolve_generation_protocol,
+)
 from rag_stack_evaluator.static_rag_evaluator.measured.vllm_subprocess import (
 	MEASURED_REQUEST_FORMAT_KEY,
 	REQUEST_FORMAT_CHAT_COMPLETIONS,
@@ -34,21 +37,15 @@ _PLACEMENT_FREE_HEADROOM_BYTES = 1 * 1024**3
 def _prepare_vllm_prompts(
 	prompts: Union[List[str], List[List[dict]]],
 	*,
-	use_chat_template: bool = True,
+	use_chat_template: Optional[bool] = None,
+	generation_protocol: str = CHAT_COMPLETIONS,
 ) -> Union[List[str], List[List[dict]]]:
-	"""Wrap raw strings as user messages for the global chat contract.
-
-	Raw local completions are intentionally unsupported: calibration, quality,
-	and measured execution must all apply the model's chat template and the
-	assistant-generation boundary. Already structured chat prompts are kept
-	byte-for-byte unchanged.
-	"""
-	if use_chat_template is not True:
-		raise ValueError(
-			"local vLLM raw-completion mode is disabled; "
-			"use_chat_template must be true"
-		)
-	if not prompts or not isinstance(prompts[0], str):
+	"""Apply the default chat boundary or preserve historical native prompts."""
+	params = {"generation_protocol": generation_protocol}
+	if use_chat_template is not None:
+		params["use_chat_template"] = use_chat_template
+	protocol = resolve_generation_protocol(params, allow_legacy=True)
+	if protocol == LEGACY_COMPLETION or not prompts or not isinstance(prompts[0], str):
 		return prompts
 	return [[{"role": "user", "content": prompt}] for prompt in prompts]
 
@@ -408,6 +405,13 @@ def _build_inprocess_engine(owner, factory):
 
 class Vllm(BaseGenerator):
 	def __init__(self, project_dir: str, model: str, **kwargs):
+		# Validate before worker environment changes, model imports, or placement.
+		from rag_stack_evaluator.static_rag_evaluator.measured.cache import get_current
+		cache = get_current()
+		self._generation_protocol = resolve_generation_protocol(
+			kwargs, allow_legacy=cache is None and "measured_request_format" not in kwargs,
+		)
+		self._use_chat_template = self._generation_protocol == CHAT_COMPLETIONS
 		super().__init__(project_dir, model, **kwargs)
 		configure_vllm_worker_env(logger=logger)
 		try:
@@ -425,21 +429,14 @@ class Vllm(BaseGenerator):
 			SamplingParams.from_optional, input_kwargs
 		)
 		input_kwargs.pop("thinking", None)
-		use_chat_template = input_kwargs.pop("use_chat_template", True)
-		if use_chat_template is not True:
-			raise ValueError(
-				"local vLLM raw-completion mode is disabled; "
-				"use_chat_template must be true"
-			)
-		self._use_chat_template = use_chat_template
+		input_kwargs.pop("use_chat_template", None)
+		input_kwargs.pop("generation_protocol", None)
 		# Request-only replay metadata: measured validates the global
 		# chat-completions contract. It is not a vLLM EngineArg.
 		input_kwargs.pop("measured_request_format", None)
 		input_kwargs.pop("_measured_source_max_tokens", None)
 		# Cache-managed lifetime: pull the current cache from the module-level
 		# registry (never via kwargs — would break dict serialization).
-		from rag_stack_evaluator.static_rag_evaluator.measured.cache import get_current
-		cache = get_current()
 		self._cache = cache
 		# Strip kwargs that aren't valid vLLM init args.
 		input_kwargs.pop("cache", None)
@@ -754,6 +751,7 @@ class Vllm(BaseGenerator):
 		prompts = _prepare_vllm_prompts(
 			prompts,
 			use_chat_template=self._use_chat_template,
+			generation_protocol=getattr(self, "_generation_protocol", CHAT_COMPLETIONS),
 		)
 
 		"""
@@ -788,19 +786,21 @@ class Vllm(BaseGenerator):
 		sampling_params = pop_params(SamplingParams.from_optional, kwargs)
 		generate_params = SamplingParams(**sampling_params)
 		try:
-			if not is_chat_prompt(prompts):
-				raise ValueError(
-					"local vLLM generation requires chat-formatted prompts"
+			if is_chat_prompt(prompts):
+				chat_template_kwargs = kwargs.pop("chat_template_kwargs", {})
+				chat_template_kwargs["enable_thinking"] = thinking
+				chat_kwargs = pop_params(LLM.chat, kwargs)
+				results: List[RequestOutput] = self.vllm_model.chat(
+					prompts, generate_params,
+					chat_template_kwargs=chat_template_kwargs, **chat_kwargs,
 				)
-			chat_template_kwargs = kwargs.pop("chat_template_kwargs", {})
-			chat_template_kwargs["enable_thinking"] = thinking
-			chat_kwargs = pop_params(LLM.chat, kwargs)
-			results: List[RequestOutput] = self.vllm_model.chat(
-				prompts,
-				generate_params,
-				chat_template_kwargs=chat_template_kwargs,
-				**chat_kwargs,
-			)
+			elif self._generation_protocol == LEGACY_COMPLETION:
+				generate_kwargs = pop_params(LLM.generate, kwargs)
+				results = self.vllm_model.generate(
+					prompts, generate_params, **generate_kwargs,
+				)
+			else:
+				raise ValueError("local vLLM generation requires chat-formatted prompts")
 		except Exception as exc:
 			if self._is_engine_dead_exception(exc):
 				self._invalidate_quality_engine_slot(exc)
@@ -834,6 +834,9 @@ class Vllm(BaseGenerator):
 		calls the subprocess per request so it can record end-to-end request
 		timing across all stages.
 		"""
+		resolve_generation_protocol({
+			"generation_protocol": getattr(self, "_generation_protocol", CHAT_COMPLETIONS),
+		})
 		if is_chat_prompt(prompts):
 			# Subprocess streaming uses the chat-completions endpoint by
 			# default. If the caller passed pre-rendered chat prompts we'd

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
+import pytest
+
 from rag_stack_evaluator.static_rag_evaluator.nodes.generator.vllm_api import (
 	VllmAPI,
 	normalize_vllm_server_uri,
@@ -95,3 +97,37 @@ def test_result_tokenizes_whole_answer_at_most_once():
 	assert tokens == [11, 12, 13]
 	assert logprobs == [-0.1, -0.2, -0.3]
 	assert calls == [("one two three", False)]
+
+
+@pytest.mark.parametrize("controls", [
+	{},
+	{"stop": ["\nObservation:"], "top_p": 0.8, "ignore_eos": False},
+	{"stop": "Observation", "ignore_eos": True},
+])
+def test_chat_request_preserves_explicit_agentic_sampling_controls(monkeypatch, controls):
+	instance = object.__new__(VllmAPI)
+	instance.uri = "http://local-generator:8000"
+	instance.model = "test-model"
+	instance.request_timeout = 30
+	instance.max_model_len = 32768
+	instance.max_token_size = 512
+	captured = {}
+	response = Mock()
+	response.json.return_value = {"choices": []}
+
+	def fake_post(url, *, json, timeout):
+		captured.update(json)
+		return response
+
+	monkeypatch.setattr(
+		"rag_stack_evaluator.static_rag_evaluator.nodes.generator.vllm_api.requests.post",
+		fake_post,
+	)
+	instance.call_vllm_api("Question and reasoning history", **controls)
+	for key in ("stop", "top_p", "ignore_eos"):
+		if key in controls:
+			assert captured[key] == controls[key]
+		else:
+			assert key not in captured
+	assert captured["messages"] == [{"role": "user", "content": "Question and reasoning history"}]
+	assert captured["max_tokens"] == 512

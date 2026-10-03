@@ -77,6 +77,8 @@ _STARTUP_OUTPUT_TAIL_LINES = 2_048
 
 
 def _request_format(sampling_params: Dict[str, Any]) -> str:
+	from rag_stack_evaluator.generation_protocol import resolve_generation_protocol
+	resolve_generation_protocol(sampling_params)
 	value = str(
 		sampling_params.get(
 			MEASURED_REQUEST_FORMAT_KEY,

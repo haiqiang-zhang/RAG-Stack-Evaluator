@@ -10,6 +10,8 @@ per-query latency / TTFT / TPOT / QPS from the run artifacts AFTER. The cost-mod
 """
 from __future__ import annotations
 
+from rag_stack_evaluator.generation_protocol import reject_legacy_generation_protocol
+
 import asyncio
 import concurrent.futures
 import logging
@@ -84,6 +86,7 @@ def apply_measured_generation_defaults(config: Dict[str, Any]) -> Dict[str, Any]
 	the same hard cap as sequential runs so trace token counts, not config-family
 	defaults, explain output length differences.
 	"""
+	reject_legacy_generation_protocol(config)
 	cfg = deepcopy(config)
 	for node_line in cfg.get("node_lines", []) or []:
 		for node in node_line.get("nodes", []) or []:
@@ -143,6 +146,7 @@ class MeasuredEvaluator:
 		    tensor_parallel_vllm, batch_size_*, kv_cache_dtype, ...).
 		:param n_queries: If set, evaluate on the first ``n_queries`` rows.
 		"""
+		reject_legacy_generation_protocol(config)
 		if cache is None:
 			raise ValueError(
 				"MeasuredEvaluator.evaluate requires a non-None ModelCache. "

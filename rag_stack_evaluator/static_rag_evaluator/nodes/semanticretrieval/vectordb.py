@@ -343,6 +343,44 @@ async def vectordb_ingest_api(
 			await vectordb.add(ids=id_batch, texts=content_batch)
 
 
+def _encode_corpus_with_oom_backoff(embedding_model, contents, *, batch_size, normalize):
+    """Retry local corpus encoding with smaller forwards after CUDA OOM.
+
+    Ingestion batching is a runtime choice, independent of the retrieval
+    request batch used by measured execution and the cost model. Keep every
+    input, its order, model precision, normalization, and token limit intact.
+    Only a complete encode result can reach the embedding cache or index.
+    """
+    import gc
+    import torch
+
+    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
+        raise ValueError("Corpus embedding batch_size must be a positive integer")
+    current_batch = batch_size
+    while True:
+        try:
+            return embedding_model.encode(
+                contents,
+                batch_size=current_batch,
+                normalize_embeddings=normalize,
+                show_progress_bar=True,
+            )
+        except torch.cuda.OutOfMemoryError:
+            if current_batch == 1:
+                raise
+            smaller_batch = max(1, current_batch // 2)
+            logger.warning(
+                "Corpus embedding CUDA OOM at batch_size=%d; retrying all "
+                "%d inputs with batch_size=%d",
+                current_batch, len(contents), smaller_batch,
+            )
+            current_batch = smaller_batch
+        # Leave the exception scope before releasing allocations: its
+        # traceback otherwise retains the failed forward's tensors.
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
 def vectordb_ingest_huggingface(
 	vectordb: BaseVectorStore,
 	corpus_data: pd.DataFrame,
@@ -373,11 +411,11 @@ def vectordb_ingest_huggingface(
 	# per-case. Cache failures fall back to a live encode — never blocks eval.
 	embeddings = embedding_cache.get_or_encode(
 		new_contents,
-		lambda: embedding_model.encode(
+		lambda: _encode_corpus_with_oom_backoff(
+			embedding_model,
 			new_contents,
 			batch_size=embedding_batch_size,
-			normalize_embeddings=vectordb.embedding.normalize,
-			show_progress_bar=True,
+			normalize=vectordb.embedding.normalize,
 		),
 		dataset_name=dataset_name,
 		embedding_id=embedding_id,

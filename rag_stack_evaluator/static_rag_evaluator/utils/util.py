@@ -15,6 +15,7 @@ import re
 import string
 import threading
 from copy import deepcopy
+from collections.abc import Mapping
 from json import JSONDecoder
 from typing import List, Callable, Dict, Optional, Any, Collection, Iterable, Union
 
@@ -626,8 +627,11 @@ def embedding_query_content(
 
 
 def to_list(item):
-	"""Recursively convert collections to Python lists."""
-	if isinstance(item, np.ndarray):
+	"""Convert sequence inputs to lists while preserving mapping structure."""
+	if isinstance(item, Mapping):
+		# Metric/client keyword options are mappings, not sequences of keys.
+		return {key: to_list(value) for key, value in item.items()}
+	elif isinstance(item, np.ndarray):
 		# Convert numpy array to list and recursively process each element
 		return [to_list(sub_item) for sub_item in item.tolist()]
 	elif isinstance(item, pd.Series):
@@ -643,7 +647,7 @@ def to_list(item):
 
 
 def convert_inputs_to_list(func):
-	"""Decorator to convert all function inputs to Python lists."""
+	"""Normalize sequence inputs recursively without discarding mapping values."""
 
 	@functools.wraps(func)
 	def wrapper(*args, **kwargs):

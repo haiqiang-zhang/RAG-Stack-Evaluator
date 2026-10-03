@@ -28,6 +28,8 @@ class MetricInput:
 	generated_texts: Optional[str] = None
 	generation_gt: Optional[List[str]] = None
 	generated_log_probs: Optional[List[float]] = None
+	# Stable QA identity for durable per-case judge evidence.
+	qid: Optional[str] = None
 
 	def is_fields_notnone(self, fields_to_check: List[str]) -> bool:
 		for field in fields_to_check:

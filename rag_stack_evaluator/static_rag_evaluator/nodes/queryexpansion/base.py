@@ -65,9 +65,14 @@ class BaseQueryExpansion(BaseModule, metaclass=abc.ABCMeta):
 
 
 def check_expanded_query(query: str, expanded_query_list: List[str]):
-	# check if the expanded query is the same as the original query
-	expanded_query_list = list(map(lambda x: x.strip(), expanded_query_list))
-	return [
-		expanded_query if expanded_query else query
-		for expanded_query in expanded_query_list
-	]
+	"""Keep distinct, nonempty expansions in their original order.
+
+	Blank separators are formatting, not additional retrieval requests. Replacing
+	each with the original question duplicated its rank-fusion vote and inflated
+	the recorded retrieval fanout. Fall back to the original question only when
+	the expansion contains no usable text.
+	"""
+	queries = list(dict.fromkeys(
+		text for value in expanded_query_list if (text := value.strip())
+	))
+	return queries or [query]
