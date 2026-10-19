@@ -13,7 +13,11 @@ from unittest.mock import patch
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples/mtrag"))
+# A host checkout supplies the example source; standalone provider checkouts
+# use the independently installed rag-stack-mtrag-example package instead.
+host_example = Path(__file__).resolve().parents[2] / "examples/mtrag"
+if (host_example / "rag_stack_mtrag").is_dir():
+    sys.path.insert(0, str(host_example))
 
 from rag_stack_evaluator.integrations.mtrag import to_qa_rows
 

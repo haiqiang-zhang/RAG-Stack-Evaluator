@@ -41,7 +41,7 @@ entry points make providers discoverable. This distribution registers
 plugins. See the host-owned
 [Evaluator API Reference](https://github.com/haiqiang-zhang/rag-stack/blob/main/docs/evaluator_api.md)
 and runnable
-[MT-RAG example](examples/mtrag/README.md).
+[MT-RAG example](https://github.com/haiqiang-zhang/rag-stack/tree/main/examples/mtrag).
 
 Existing `rag_stack_evaluator.base.BaseEvaluator` subclasses remain supported.
 The host registry constructs the selected backend:

@@ -198,18 +198,9 @@ requires the caller to keep it associated with the same QA content because
 existing JSONL files are reused.
 
 These project-local artifacts are separate from static evaluator shared
-embedding/index caches configured by `RAG_STACK_CACHE_DIR`. Moving the adapter
-into the evaluator package does not change existing project paths or require
-regenerating cached FlashRAG artifacts.
+embedding/index caches configured by `RAG_STACK_CACHE_DIR`.
 
-## Development boundary
-
-Keep adapter behavior and backend unit tests in this repository. RAG-Stack
-integration tests should verify backend selection, resolved inputs, returned
-scores/traces, and optional dependency behavior. Changes to framework hooks or
-framework pipeline implementations belong in the nested `FlashRAG` repository;
-update its gitlink when accepting such changes. Do not add host-side evaluator
-implementations or compatibility copies.
+## Verify the backend
 
 Run the evaluator's FlashRAG tests from the evaluator root in the compatible
 host environment. Real model execution additionally needs the corresponding
