@@ -1,6 +1,6 @@
 """Exercise plugin registration, tracing, scoring transport, and result normalization.
 
-Run with the evaluator and host packages available on PYTHONPATH. The external
+Run with the host and example packages available on PYTHONPATH. The external
 scorer is an explicitly synthetic stdlib subprocess; no judge/model is loaded.
 """
 
@@ -12,8 +12,8 @@ import json
 from pathlib import Path
 import sys
 
-from rag_stack_evaluator.api import normalize_evaluation_result
-from rag_stack_evaluator.factory import available_backends, create_quality_evaluator, register_backend
+from rag_stack.evaluation.api import normalize_evaluation_result
+from rag_stack.evaluation.registry import available_backends, create_quality_evaluator, register_backend
 from rag_stack_mtrag.backend import BACKEND
 from rag_stack_mtrag.fixture import fixture_config, fixture_tasks
 

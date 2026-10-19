@@ -2035,7 +2035,7 @@ class MeasuredServingRuntime:
 		if recorder is None:
 			# Backward-compatible direct-runtime fallback. Production passes the
 			# recorder explicitly across the defensive executor boundary.
-			from rag_stack_evaluator.static_rag_evaluator.recording import get_current_recorder
+			from rag_stack.evaluation._recording import get_current_recorder
 
 			recorder = get_current_recorder()
 		state_lock = asyncio.Lock()
@@ -4461,7 +4461,7 @@ def _first_list(df: pd.DataFrame, column: str) -> List[Any]:
 
 
 def _record_generate(previous: pd.DataFrame, result: pd.DataFrame, params: Dict[str, Any]) -> None:
-	from rag_stack_evaluator.static_rag_evaluator import recording as rec
+	from rag_stack.evaluation import _recording as rec
 
 	qids = _qids(previous)
 	prompts = previous["prompts"].tolist() if "prompts" in previous.columns else [""] * len(qids)
@@ -4487,7 +4487,7 @@ def _record_react_generate(
 	gen_perf: Dict[str, Any],
 	params: Dict[str, Any],
 ) -> None:
-	from rag_stack_evaluator.static_rag_evaluator import recording as rec
+	from rag_stack.evaluation import _recording as rec
 
 	n = max(int(gen_perf.get("n_output_tokens", 1) or 1), 1)
 	rec.record_io(
@@ -4507,7 +4507,7 @@ def _record_query_expansion(
 	gen_perf: Dict[str, Any],
 	params: Dict[str, Any],
 ) -> None:
-	from rag_stack_evaluator.static_rag_evaluator import recording as rec
+	from rag_stack.evaluation import _recording as rec
 
 	n = max(int(gen_perf.get("n_output_tokens", 1) or 1), 1)
 	rec.record_io(
@@ -4525,7 +4525,7 @@ def _record_pure_stage(
 	params: Dict[str, Any],
 	best_result: pd.DataFrame,
 ) -> None:
-	from rag_stack_evaluator.static_rag_evaluator import recording as rec
+	from rag_stack.evaluation import _recording as rec
 
 	stage = str(getattr(node, "stage", node))
 	if "__qid__" not in best_result.columns:

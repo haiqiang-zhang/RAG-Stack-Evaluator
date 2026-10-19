@@ -1,0 +1,101 @@
+"""Quality publication uses dataset IDs without changing internal row IDs."""
+
+from copy import deepcopy
+from types import SimpleNamespace
+
+import pytest
+
+from rag_stack.evaluator_contract import normalize_backend_result
+from rag_stack_evaluator.backends import _EngineAdapter
+from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
+    StaticRAGEvaluatorQualityOnly, _publish_quality_trace,
+)
+from rag_stack_evaluator.flashrag_quality_evaluator.flashrag_quality_evaluator import (
+    _quality_trace_envelope,
+)
+
+
+def calls(tokens):
+    return [{"stage": "generator", "input_tokens": tokens, "output_tokens": 2,
+             "step_idx": 0, "model_id": "fixture"}]
+
+
+def test_static_publication_maps_internal_ids_before_callback_and_preserves_identity():
+    raw_trace = [calls(19), calls(7)]
+    original = deepcopy(raw_trace)
+    recorder_ids = (7, 2)
+    dataset_mapping = {2: "question-alpha", 7: "question-beta"}
+    callbacks = []
+    engine = object.__new__(StaticRAGEvaluatorQualityOnly)
+
+    def run_pipeline(config, run_dir=None, on_trace_ready=None):
+        envelope = _publish_quality_trace(
+            raw_trace, recorder_ids, 2, on_trace_ready,
+            question_id_map=dataset_mapping,
+        )
+        return SimpleNamespace(quality={"quality": 0.75}, trace=envelope)
+
+    engine._run_pipeline = run_pipeline
+    result = _EngineAdapter(engine).evaluate({}, on_trace_ready=callbacks.append)
+    assert callbacks[0] is result.trace
+    assert [q["question_id"] for q in callbacks[0]["queries"]] == [
+        "question-beta", "question-alpha",
+    ]
+    assert [q["calls"][0]["input_tokens"] for q in result.trace["queries"]] == [19, 7]
+    assert raw_trace == original
+    assert recorder_ids == (7, 2)
+    assert dataset_mapping == {2: "question-alpha", 7: "question-beta"}
+    payload = normalize_backend_result(
+        result, backend="static_gt", pipeline_config={},
+        question_ids=["question-alpha", "question-beta"],
+    )
+    assert payload["__execution_dag__"] is callbacks[0]
+
+
+@pytest.mark.parametrize("mapping", [
+    {2: "alpha", 99: "beta"},
+    {2: "alpha", 7: "beta", 99: "extra"},
+])
+def test_static_invalid_mapping_fails_before_callback(mapping):
+    with pytest.raises(RuntimeError, match="dataset mapping"):
+        _publish_quality_trace(
+            [calls(1), calls(2)], (7, 2), 2,
+            lambda trace: pytest.fail("published invalid cohort"),
+            question_id_map=mapping,
+        )
+
+
+def test_static_duplicate_public_ids_fail_before_callback():
+    with pytest.raises(ValueError, match="duplicate"):
+        _publish_quality_trace(
+            [calls(1), calls(2)], (7, 2), 2,
+            lambda trace: pytest.fail("published invalid cohort"),
+            question_id_map={7: "same", 2: "same"},
+        )
+
+
+def monitor_dag(qid, tokens):
+    return {"query_id": qid, "nodes": [{
+        "node_type": "generate", "step_idx": 0, "model_id": "fixture",
+        "input_tokens": tokens, "output_tokens": 2,
+    }]}
+
+
+def test_flashrag_preserves_monitor_question_association_when_dataset_order_differs():
+    envelope = _quality_trace_envelope(
+        [monitor_dag("question-beta", 19), monitor_dag("question-alpha", 7)],
+        expected_question_ids=["question-alpha", "question-beta"],
+    )
+    assert [(q["question_id"], q["calls"][0]["input_tokens"]) for q in envelope["queries"]] == [
+        ("question-beta", 19), ("question-alpha", 7),
+    ]
+
+
+@pytest.mark.parametrize("actual,expected", [
+    (["alpha"], ["alpha", "beta"]),
+    (["alpha", "wrong"], ["alpha", "beta"]),
+    (["alpha", "alpha"], ["alpha", "beta"]),
+])
+def test_flashrag_rejects_missing_or_misattributed_monitor_questions(actual, expected):
+    with pytest.raises(RuntimeError, match="every dataset question ID"):
+        _quality_trace_envelope([monitor_dag(qid, 1) for qid in actual], expected_question_ids=expected)

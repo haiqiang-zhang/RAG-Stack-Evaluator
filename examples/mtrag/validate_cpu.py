@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from rag_stack_evaluator.integrations.mtrag import (
+from rag_stack_mtrag.scoring import (
     build_judge_records, load_tasks, to_qa_rows,
 )
 

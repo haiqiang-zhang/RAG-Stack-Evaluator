@@ -15,9 +15,9 @@ from unittest.mock import patch
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples/mtrag"
 sys.path.insert(0, str(EXAMPLE))
 
-from rag_stack_evaluator.api import Evaluator, normalize_evaluation_result
-from rag_stack_evaluator import factory
-from rag_stack_evaluator.integrations.mtrag import score_with_mtrag
+from rag_stack.evaluation.api import Evaluator, normalize_evaluation_result
+from rag_stack.evaluation import registry as factory
+from rag_stack_mtrag.scoring import score_with_mtrag
 from rag_stack_mtrag.backend import BACKEND, MTRAGEvaluator, PipelineRun, Prediction
 from rag_stack_mtrag.fixture import fixture_config, fixture_tasks, run_pipeline
 from rag_stack_mtrag import run_official
@@ -144,7 +144,7 @@ class MTRAGBackendExampleTests(unittest.TestCase):
         def callback(trace):
             raise RuntimeError("Cost model failed")
 
-        with self.assertLogs("rag_stack_evaluator.api", level="WARNING"):
+        with self.assertLogs("rag_stack.evaluation.api", level="WARNING"):
             result = self.evaluator().evaluate(fixture_config(), on_trace_ready=callback)
         self.assertEqual(len(result.metrics), 3)
 
@@ -203,11 +203,11 @@ class MTRAGBackendExampleTests(unittest.TestCase):
         self.assertIn("--judge_model", command)
 
     def test_example_imports_no_model_libraries(self):
-        code = "import sys; import rag_stack_mtrag.backend; assert not {'torch','transformers','ragas','pandas'}.intersection(sys.modules)"
+        code = "import sys; import rag_stack_mtrag.backend; assert not {'torch','transformers','ragas','pandas','rag_stack_evaluator'}.intersection(sys.modules)"
         # A fresh process inherits source paths but deliberately omits the
         # validation guard, whose own eager torch import would mask this check.
         import os
-        environment = dict(os.environ, PYTHONPATH=str(EXAMPLE) + ":" + str(EXAMPLE.parents[1]))
+        environment = dict(os.environ, PYTHONPATH=str(EXAMPLE) + ":" + str(EXAMPLE.parents[2]))
         subprocess.run([sys.executable, "-c", code], check=True, env=environment)
 
 

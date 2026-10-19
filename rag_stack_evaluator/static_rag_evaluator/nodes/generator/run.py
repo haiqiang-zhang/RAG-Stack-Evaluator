@@ -156,7 +156,7 @@ def _record_generate(best_result: pd.DataFrame, result: pd.DataFrame, module_par
 	"""Emit one 'generate' trace call per query (no-op when no recorder bound). Output
 	tokens are EXACT (``len(generated_tokens)`` = vLLM token ids); input tokens are formally
 	tokenized from the prompt; bytes are exact UTF-8. Keyed by the permanent ``__qid__``."""
-	from rag_stack_evaluator.static_rag_evaluator import recording as _rec
+	from rag_stack.evaluation import _recording as _rec
 	if "__qid__" not in best_result.columns or "generated_tokens" not in result.columns:
 		return
 	qids = best_result["__qid__"].tolist()

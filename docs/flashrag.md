@@ -39,19 +39,20 @@ loads framework modules only when the FlashRAG backend is selected.
 
 ## Public API
 
-The shared evaluator interface lives in
-[`rag_stack_evaluator.base.BaseEvaluator`](../rag_stack_evaluator/base.py).
-Construct a backend through the lazy factory:
+The shared evaluator interface belongs to RAG-Stack at
+`rag_stack.evaluation.api.Evaluator`. The provider adapter returns the same
+`EvaluationResult` as every other registered backend. Construct a backend
+through the host registry:
 
 ```python
-from rag_stack_evaluator.factory import create_quality_evaluator
+from rag_stack.evaluation.registry import create_quality_evaluator
 
 # dataset_manager is the caller's owner-managed dataset for this project.
 evaluator = create_quality_evaluator(
     dataset_manager=dataset_manager,
     project_dir=dataset_manager.project_dir,
     backend="flashrag",
-    flashrag_options={"framework": "vllm", "monitor": "full"},
+    backend_options={"framework": "vllm", "monitor": "full"},
 )
 quality = evaluator.evaluate(
     resolved_pipeline_config,
@@ -65,7 +66,7 @@ The factory also accepts `dataset` and `project_dir` for callers with a dataset
 object. Its default backend is `static_gt`. `metrics_override`, when provided,
 replaces the configured scoring metrics for this call without mutating the
 input config. `on_trace_ready`, when provided and monitoring produces a trace,
-receives the same envelope returned under `quality["__execution_dag__"]`.
+receives the same envelope returned as `quality.trace`.
 FlashRAG scores inside its pipeline run, so this callback runs after scoring;
 callback failures are logged and do not invalidate the quality result.
 
@@ -80,7 +81,7 @@ Host configuration and search-space code can query supported metadata without
 importing FlashRAG's heavyweight runtime:
 
 ```python
-from rag_stack_evaluator.factory import supported_metrics, supported_pipeline_modes
+from rag_stack.evaluation.registry import supported_metrics, supported_pipeline_modes
 
 metric_names = supported_metrics("flashrag")
 pipeline_modes = supported_pipeline_modes("flashrag")
@@ -122,9 +123,9 @@ The factory supports `sequential`, `adaptive_rag`, `iter_retgen`, `flare`,
 Use `supported_pipeline_modes("flashrag")` for the authoritative list.
 
 Per-call `eval_backend_setting.flashrag` values override constructor-level
-`flashrag_options` for translation, index configuration, and monitoring. The
+`backend_options` for translation, index configuration, and monitoring. The
 materialized QA dataset name is selected separately from the constructor's
-`flashrag_options.dataset_name`; a per-call `dataset_name` does not override it.
+`backend_options.dataset_name`; a per-call `dataset_name` does not override it.
 When the constructor omits that option, the QA content hash supplies the name.
 For a host optimization config, select the backend with:
 

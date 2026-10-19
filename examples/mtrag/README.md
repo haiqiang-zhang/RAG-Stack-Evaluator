@@ -6,7 +6,11 @@ and a serving trace through public hooks. MT-RAG scores the answers afterward.
 The adapter returns `EvaluationResult(metrics, trace, workflow)` through the
 same interface as built-in evaluator backends.
 
-The public API is described in [Evaluator API Reference](../../docs/extensibility.md).
+RAG-Stack owns the interface, registry, and hooks. This example imports
+`rag_stack.evaluation` directly; it does not import `rag_stack_evaluator`.
+Its location in this repository is for distribution of the example only.
+The host's [Evaluator API Reference](https://github.com/haiqiang-zhang/rag-stack/blob/main/docs/evaluator_api.md)
+describes the contract shared by this plugin, `static_gt`, and `flashrag`.
 
 ## 1. What this example demonstrates
 
@@ -28,7 +32,7 @@ it does not feed this run's previous generated answer into the next turn.
 | --- | --- |
 | `rag_stack_mtrag/backend.py` | External backend descriptor, workload selection, pipeline invocation, publication of trace/workflow, and quality aggregation |
 | Your `module:run_pipeline` callable | Interpret candidate knobs, run your own components, record their actual I/O, and declare the actual workflow |
-| `rag_stack_evaluator.integrations.mtrag.score_with_mtrag` | Hash-verified task mapping, subprocess transport, evidence/ID checks, and selected-score parsing |
+| `rag_stack_mtrag.scoring.score_with_mtrag` | Hash-verified task mapping, subprocess transport, evidence/ID checks, and selected-score parsing |
 | `rag_stack_mtrag/run_official.py` | Verify the upstream checkout/configuration and invoke the full official generation CLI |
 | `rag_stack_mtrag/fixture.py` and `run_cpu.py` | Small, deterministic CPU contract fixtures; their scores and components are not benchmark results |
 
@@ -48,13 +52,16 @@ judging, and conditioned metrics. The plugin exposes these scalar selections:
 Selecting fewer returned metrics does **not** prune the official full-suite
 command. It only selects the metrics passed back to RAG-Stack. The optional
 `run_official_faithfulness.py` script preserves the earlier single-judge example.
+For the static backend's optional `mt_rag_faithfulness` metric, install this
+example package too; the legacy `rag_stack_evaluator.integrations.mtrag` imports
+forward to `rag_stack_mtrag.scoring`.
 
 ## 2. Run the CPU interface example
 
 From a RAG-Stack checkout with its Python environment available:
 
 ```bash
-PYTHONPATH="$PWD:$PWD/RAG-Stack-Evaluator:$PWD/RAG-Stack-Evaluator/examples/mtrag" \
+PYTHONPATH="$PWD:$PWD/RAG-Stack-Evaluator/examples/mtrag" \
 python RAG-Stack-Evaluator/examples/mtrag/run_cpu.py \
     --output /tmp/mtrag-interface-example
 ```
@@ -74,7 +81,7 @@ judge calls in this trace.
 Focused tests, from the evaluator checkout:
 
 ```bash
-PYTHONPATH="$PWD:$PWD/.." \
+PYTHONPATH="$PWD/..:$PWD/examples/mtrag" \
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
 python -m pytest tests/test_mtrag_adapter.py tests/test_mtrag_backend_example.py -q
 ```
@@ -135,7 +142,7 @@ quality evaluation only; it does not provide measured-performance execution.
 
 ## 4. Install the plugin for CLI and worker discovery
 
-From the host checkout, after installing the host and evaluator packages:
+From the host checkout, with RAG-Stack available:
 
 ```bash
 python -m pip install --no-deps -e RAG-Stack-Evaluator/examples/mtrag
@@ -149,7 +156,7 @@ mtrag = "rag_stack_mtrag.backend:BACKEND"
 ```
 
 Each new host process can now resolve `global.eval_backend: mtrag`. Explicit
-`register_backend(BACKEND)` is an alternative for an embedded Python program;
+`rag_stack.evaluation.registry.register_backend(BACKEND)` is an alternative for an embedded Python program;
 that registration does not propagate to new CLI/worker processes.
 
 ## 5. Configure the official MT-RAG evaluator
@@ -207,7 +214,7 @@ to names exposed by this backend. Built-in metrics such as `rouge` or
 cost-model performance evaluation; this example does not support measured mode.
 
 `tasks_path` must identify the exact sidecar used to construct the host QA data.
-Use `load_tasks` and `to_qa_rows` from `rag_stack_evaluator.integrations.mtrag`
+Use `load_tasks` and `to_qa_rows` from `rag_stack_mtrag.scoring`
 to preserve task IDs, full role-labelled histories, and reference answers.
 When the host supplies `dataset_manager`, its active `qa_data.qid` values select
 the subset and order to evaluate. Standalone construction without a manager

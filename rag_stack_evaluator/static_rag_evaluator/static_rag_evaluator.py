@@ -83,7 +83,7 @@ class PipelineRun:
 	# (recording.TraceRecorder) — one ordered call list per query, mode-agnostic
 	# (measured | quality-only) and shape-agnostic (sequential | agentic).
 	# Quality paths carry THE canonical quality-trace envelope (question_id = dataset
-	# row position; already fired through on_trace_ready). The measured path
+	# qid; already fired through on_trace_ready). The measured path
 	# carries the raw trace_v1 list — MeasuredEvaluator wraps it with
 	# question_id = dataset idx + invocation_id = winner qid. None when
 	# recording produced no calls.
@@ -108,14 +108,17 @@ def _publish_quality_trace(
 	trace_qids: Sequence[Any],
 	qa_rows: int,
 	on_trace_ready: Optional[Callable[[dict], None]],
+	*,
+	question_id_map: Optional[Dict[Any, Any]] = None,
 ) -> Optional[dict]:
 	"""Wrap a quality-run trace into THE frozen canonical envelope and fire the hook.
 
-	The quality-only paths (sequential / react) record under the permanent
-	``__qid__`` = dataset row position, so the recorder's emission qids ARE the
-	stable question identities. Cardinality is the producer's responsibility:
-	a recorded trace that does not cover every QA row is a harness bug and
-	raises here instead of shipping a silently partial workload to the CM.
+	Quality execution records under internal ``__qid__`` row identities. The
+	quality publisher supplies ``question_id_map`` to translate them to dataset
+	``qid`` values without changing recorder or measured-invocation semantics.
+	Recorder order is preserved, so each call list stays with its own question.
+	Cardinality and mapping coverage are checked before the early CM callback.
+	Private callers that already supply public IDs can omit the mapping.
 
 	``on_trace_ready`` (judge/CM overlap) receives the SAME envelope object
 	this function returns — the controller identity-matches (``is``) the
@@ -133,12 +136,19 @@ def _publish_quality_trace(
 			"quality trace does not cover every dataset QA row: expected "
 			f"{qa_rows} queries, recorded {len(trace)}"
 		)
+	question_ids = [str(qid) for qid in trace_qids]
+	if question_id_map is not None:
+		mapping = {str(key): str(value) for key, value in question_id_map.items()}
+		if len(mapping) != qa_rows or set(question_ids) != set(mapping):
+			raise RuntimeError(
+				"quality trace question IDs do not cover the dataset mapping: "
+				f"missing={sorted(set(mapping) - set(question_ids))}, "
+				f"unexpected={sorted(set(question_ids) - set(mapping))}"
+			)
+		question_ids = [mapping[qid] for qid in question_ids]
 	from rag_stack.rag_ir import make_quality_trace_envelope
 
-	envelope = make_quality_trace_envelope(
-		trace,
-		question_ids=[str(qid) for qid in trace_qids],
-	)
+	envelope = make_quality_trace_envelope(trace, question_ids=question_ids)
 	if on_trace_ready is not None:
 		try:
 			on_trace_ready(envelope)
@@ -268,7 +278,7 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 					token_stats=run.token_stats,
 				)
 				# rag_ir: hand the reconstructed trace to the controller as a canonical
-				# envelope (question_id = dataset row position, one trace per
+				# envelope (question_id = stable QA ID, one trace per
 				# ``previous_result`` row) so the sequential path is priced by
 				# the SAME trace-driven cost model (compute_trace_performance)
 				# as the agentic (react) path — one comparable performance scale
@@ -279,7 +289,7 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 					from rag_stack.rag_ir import make_quality_trace_envelope
 					execution_dag = make_quality_trace_envelope(
 						traces,
-						question_ids=[str(idx) for idx in range(len(traces))],
+						question_ids=[str(qid) for qid in run.previous_result["qid"].tolist()],
 					)
 				else:
 					execution_dag = payload
@@ -495,7 +505,7 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 			# and stamp a PERMANENT per-query id (row position) onto qa_data so each
 			# node's model calls attribute their trace entry to the right query.
 			# Cleared after the run. See static_rag_evaluator/recording.py.
-			from rag_stack_evaluator.static_rag_evaluator.recording import (
+			from rag_stack.evaluation._recording import (
 				TraceRecorder, set_current_recorder, clear_current_recorder)
 			_clear_trace_context = clear_current_recorder
 			_recorder = TraceRecorder()
@@ -562,6 +572,9 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 				# branch above and always finishes its timed runtime before scoring.
 				_trace = _publish_quality_trace(
 					_trace_v1, _trace_qids, len(self.qa_data), on_trace_ready,
+					question_id_map=dict(zip(
+						self.qa_data["__qid__"], self.qa_data["qid"],
+					)),
 				)
 
 			last_node_type = _last_node_type_for(node_lines)

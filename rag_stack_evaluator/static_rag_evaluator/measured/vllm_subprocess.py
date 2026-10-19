@@ -278,7 +278,7 @@ def _fit_request_to_context(
 	if len(str(prompt)) + requested <= limit:
 		return requested, None
 	try:
-		from rag_stack_evaluator.static_rag_evaluator.recording import count_tokens_batch
+		from rag_stack.evaluation._recording import count_tokens_batch
 
 		input_tokens = int(count_tokens_batch([prompt], model)[0])
 	except Exception as exc:  # noqa: BLE001

@@ -268,7 +268,7 @@ class MeasuredEvaluator:
 			# branch below. Contextvars do not cross that boundary, so bind the
 			# explicitly passed recorder for node wrappers in this execution
 			# context and restore whatever the caller had afterwards.
-			from rag_stack_evaluator.static_rag_evaluator.recording import (
+			from rag_stack.evaluation._recording import (
 				get_current_recorder,
 				set_current_recorder,
 			)

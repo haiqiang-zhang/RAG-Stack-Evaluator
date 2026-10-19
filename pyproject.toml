@@ -99,6 +99,10 @@ dependencies = [
     "optimum[openvino,nncf]==2.1.0",
 ]
 
+[project.entry-points."rag_stack.evaluators"]
+static_gt = "rag_stack_evaluator.backends:STATIC_GT"
+flashrag = "rag_stack_evaluator.backends:FLASHRAG"
+
 [project.optional-dependencies]
 # FAISS stays explicit because native deployments may prefer the matching
 # conda package. The evaluator imports `faiss`; install this extra unless the

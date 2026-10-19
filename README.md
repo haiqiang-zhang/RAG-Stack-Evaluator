@@ -1,8 +1,10 @@
 # RAG-Stack Evaluator
 
-RAG-Stack Evaluator owns all RAG-Stack evaluator implementations: static
-quality, optional FlashRAG quality, real-hardware measured execution, dataset
-adapters, scoring, trace recording, and vLLM instrumentation. It exposes them
+RAG-Stack Evaluator provides the `static_gt` and optional `flashrag` backends,
+real-hardware measured execution, dataset adapters, scoring, and vLLM
+instrumentation. RAG-Stack owns the evaluator interface, registry, and public
+tracing hooks; other backend providers use that same contract. This package
+exposes its implementations
 through its own top-level Python package:
 
 ```python
@@ -23,26 +25,29 @@ for the host package. The evaluator continues to consume RAG-Stack's shared
 dataset, IR, layout, security, and cost-model contracts through `rag_stack.*`.
 Install and run it through a compatible RAG-Stack checkout; the direct install
 commands below are for developing the submodule in that host environment.
-RAG-Stack owns optimization, search-space resolution, cost models, and shared
-contracts. Backend implementations and their unit tests are maintained here.
+RAG-Stack owns optimization, search-space resolution, cost models, shared
+contracts, evaluator registration, and public component hooks. Backend implementations and their unit tests are maintained here.
 The optional FlashRAG fork is pinned as this project's nested `FlashRAG`
 submodule, with installation and runtime details in the
 [FlashRAG guide](docs/flashrag.md).
 
 ## Backend selection
 
-External backends implement the public `Evaluator` protocol and return an
-`EvaluationResult` containing scores and RAG-IR. `TraceSession` supplies exact
-component input/output hooks, and `BackendSpec` plus Python entry points make
-backends discoverable by the host. See the complete
-[Evaluator API Reference](docs/extensibility.md) and runnable
+Every registered backend implements the host's `Evaluator` protocol and returns
+an `EvaluationResult` containing scores and RAG-IR. RAG-Stack's `TraceSession`
+supplies exact component input/output hooks, and its `BackendSpec` plus Python
+entry points make providers discoverable. This distribution registers
+`static_gt` and `flashrag` through the same entry-point group as external
+plugins. See the host-owned
+[Evaluator API Reference](https://github.com/haiqiang-zhang/rag-stack/blob/main/docs/evaluator_api.md)
+and runnable
 [MT-RAG example](examples/mtrag/README.md).
 
 Existing `rag_stack_evaluator.base.BaseEvaluator` subclasses remain supported.
-The lazy factory constructs the selected backend:
+The host registry constructs the selected backend:
 
 ```python
-from rag_stack_evaluator.factory import create_quality_evaluator
+from rag_stack.evaluation.registry import create_quality_evaluator
 
 evaluator = create_quality_evaluator(
     dataset_manager=dataset_manager,
@@ -52,10 +57,11 @@ evaluator = create_quality_evaluator(
 ```
 
 `create_quality_evaluator` also accepts `dataset`, `project_dir`, and
-`backend_options` for a registered backend (`flashrag_options` remains supported
-for existing FlashRAG callers). Direct static quality and measured
+`backend_options` for every registered backend. The legacy
+`rag_stack_evaluator.factory` forwarding module translates `flashrag_options`
+for existing FlashRAG callers; new code uses `backend_options`. Direct static quality and measured
 imports remain supported. `supported_metrics(backend)` and
-`supported_pipeline_modes(backend)` in the same factory module expose backend
+`supported_pipeline_modes(backend)` in the same host registry expose backend
 capabilities for host validation without importing optional FlashRAG runtime
 modules. See the [FlashRAG guide](docs/flashrag.md) for its separate settings and
 execution contract.

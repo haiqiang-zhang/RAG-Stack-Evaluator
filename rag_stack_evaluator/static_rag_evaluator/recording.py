@@ -1,12 +1,12 @@
-"""Compatibility import for the shared, lightweight recording implementation.
+"""Compatibility alias for RAG-Stack's shared recording implementation.
 
-Both module paths intentionally resolve to the same module object. Existing
-wrappers, ContextVars, tokenizer caches, and monkeypatches therefore keep their
-original behavior. External integrations should use ``rag_stack_evaluator.tracing``.
+All recorder paths resolve to the same module object, preserving ContextVars,
+tokenizer caches, and historical monkeypatch targets. New integrations should
+use ``rag_stack.evaluation.tracing``.
 """
 
 import sys
 
-from rag_stack_evaluator import _recording
+from rag_stack.evaluation import _recording
 
 sys.modules[__name__] = _recording

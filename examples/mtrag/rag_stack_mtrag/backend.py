@@ -9,10 +9,10 @@ import math
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from rag_stack_evaluator.api import EvaluationResult, publish_trace
-from rag_stack_evaluator.factory import BackendSpec, EvaluatorContext
-from rag_stack_evaluator.integrations.mtrag import load_tasks, score_with_mtrag
-from rag_stack_evaluator.tracing import TraceSession
+from rag_stack.evaluation.api import EvaluationResult, publish_trace
+from rag_stack.evaluation.registry import BackendSpec, EvaluatorContext
+from rag_stack_mtrag.scoring import load_tasks, score_with_mtrag
+from rag_stack.evaluation.tracing import TraceSession
 
 
 METRIC_KEYS = {

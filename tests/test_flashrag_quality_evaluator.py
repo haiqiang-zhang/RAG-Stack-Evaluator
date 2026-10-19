@@ -132,7 +132,7 @@ def test_monitor_records_events():
 
 def test_flashrag_producer_ships_v2_envelope_without_bytes():
     """P1 producer contract: monitor DAGs wrap into THE v2 quality-trace
-    envelope (question_id = row position, dense retrieve split into the
+    envelope (question_id = dataset qid, dense retrieve split into the
     encode + vectorsearch pair) and FlashRAG's byte-less events stay
     byte-less — absent fields, never zero-filled."""
     from rag_stack_evaluator.flashrag_quality_evaluator.flashrag_quality_evaluator import (
@@ -170,7 +170,7 @@ def test_flashrag_producer_ships_v2_envelope_without_bytes():
     )
 
     validate_quality_trace_envelope(envelope)
-    assert [q["question_id"] for q in envelope["queries"]] == ["0", "1"]
+    assert [q["question_id"] for q in envelope["queries"]] == ["q1", "q2"]
     q1_stages = [c["stage"] for c in envelope["queries"][0]["calls"]]
     assert q1_stages == [
         "semantic_retrieval_encode",
@@ -383,7 +383,7 @@ def test_fake_pipeline_materializes_data_and_publishes_canonical_trace(fake_flas
     state.manager.activate.assert_called_once_with("corpus-view")
     state.ensure_index.assert_called_once()
     envelope = result["__execution_dag__"]
-    assert envelope["queries"][0]["question_id"] == "0"
+    assert envelope["queries"][0]["question_id"] == "q0"
     assert envelope["queries"][0]["calls"][0]["stage"] == "generator"
     assert callback.call_args.args[0] is envelope
     assert state.monitor is None
@@ -489,7 +489,7 @@ def test_real_sequential_pipeline_scores_synthetic_queries_without_models(tmp_pa
     assert result["em"] == 1.0
     assert result["f1"] == 1.0
     queries = result["__execution_dag__"]["queries"]
-    assert [query["question_id"] for query in queries] == ["0", "1"]
+    assert [query["question_id"] for query in queries] == ["france", "japan"]
     for query in queries:
         assert [call["stage"] for call in query["calls"]] == [
             "semantic_retrieval_encode", "semantic_retrieval_vectorsearch", "generator",

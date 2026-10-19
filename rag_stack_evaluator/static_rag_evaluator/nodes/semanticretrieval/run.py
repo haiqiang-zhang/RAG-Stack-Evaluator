@@ -116,7 +116,7 @@ def run_semantic_retrieval_node(
 	safe_dataframe_to_csv(summary_df, os.path.join(save_dir, "summary.csv"), index=False)
 	# trace: encode (query embedding, GPU) + retrieve (faiss + O(1) fetch) per query.
 	if "__qid__" in best_result.columns:
-		from rag_stack_evaluator.static_rag_evaluator import recording as _rec
+		from rag_stack.evaluation import _recording as _rec
 		_qids = best_result["__qid__"].tolist()
 		_q = (best_result["query"].astype(str).tolist()
 			  if "query" in best_result.columns else [""] * len(_qids))

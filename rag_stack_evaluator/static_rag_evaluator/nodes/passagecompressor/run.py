@@ -113,7 +113,7 @@ def run_passage_compressor_node(
 	# trace: compress (e.g. llmlingua2 per-chunk encoder) — one call/query. Tokens here are
 	# diagnostic (the cost model keys on config n_chunks/chunk_tokens); record context size.
 	if "__qid__" in best_result.columns:
-		from rag_stack_evaluator.static_rag_evaluator import recording as _rec
+		from rag_stack.evaluation import _recording as _rec
 		_qids = best_result["__qid__"].tolist()
 		_rc_col = next((c for c in ("retrieved_contents", "retrieved_contents_semantic")
 						if c in best_result.columns), None)

@@ -161,7 +161,7 @@ class FlashRAGQualityEvaluator(BaseEvaluator):
           5. Build + run the pipeline.
           6. Return ``{metric_name: float, "__execution_dag__": <envelope>}``
              where ``<envelope>`` is the canonical quality-trace envelope (one
-             component-call trace per query, ``question_id`` = row position).
+             component-call trace per query, ``question_id`` = dataset qid).
 
         The returned dict's metric keys are FlashRAG's native vocabulary
         (``em``, ``f1``, ``rouge-l``, etc.); the Controller's evaluator-
@@ -295,11 +295,12 @@ class FlashRAGQualityEvaluator(BaseEvaluator):
         if monitor is not None:
             # Normalize the per-query execution DAGs into taxonomy-stage calls
             # and ship THE frozen canonical quality-trace envelope (one complete
-            # component-call trace per query, question_id = row position).
+            # component-call trace per query, question_id = dataset qid).
             # This is the cost model's sole input contract — it replays the
             # traces and never inspects pipeline.mode.
             result["__execution_dag__"] = _quality_trace_envelope(
-                [_dag_to_dict(d) for d in monitor.build_dags()]
+                [_dag_to_dict(d) for d in monitor.build_dags()],
+                expected_question_ids=self.qa_data["qid"].tolist(),
             )
             if on_trace_ready is not None:
                 try:
@@ -434,12 +435,16 @@ def _dag_to_dict(dag: Any) -> Dict[str, Any]:
     }
 
 
-def _quality_trace_envelope(monitor_dags: list) -> dict:
+def _quality_trace_envelope(
+    monitor_dags: list, *, expected_question_ids: Optional[Sequence[Any]] = None,
+) -> dict:
     """Monitor DAG dicts → THE frozen canonical quality-trace envelope.
 
     ``normalize_traces`` maps monitor event verbs to taxonomy stages (dense
-    ``retrieve`` splits into encode + vectorsearch); ``question_id`` is the
-    dataset row position. FlashRAG monitor events carry NO byte counts —
+    ``retrieve`` splits into encode + vectorsearch); each monitor ``query_id``
+    is the dataset qid written to FlashRAG's JSONL ``id`` field. Preserve that
+    association even when event emission differs from dataset order. FlashRAG
+    monitor events carry NO byte counts —
     bytes stay absent (the envelope keeps them optional; zero-filling would
     silently zero the CM's communication volume). The factory validates
     completeness (terminal generator call per query) before shipping.
@@ -447,8 +452,16 @@ def _quality_trace_envelope(monitor_dags: list) -> dict:
     from rag_stack.rag_ir import make_quality_trace_envelope
     from rag_stack_evaluator.flashrag_quality_evaluator.trace_adapter import normalize_traces
 
+    question_ids = [str(dag["query_id"]) for dag in monitor_dags]
+    if expected_question_ids is not None:
+        expected = [str(qid) for qid in expected_question_ids]
+        if len(set(expected)) != len(expected):
+            raise ValueError("FlashRAG dataset contains duplicate question IDs")
+        if len(question_ids) != len(expected) or set(question_ids) != set(expected):
+            raise RuntimeError(
+                "FlashRAG trace must cover every dataset question ID: "
+                f"missing={sorted(set(expected) - set(question_ids))}, "
+                f"unexpected={sorted(set(question_ids) - set(expected))}"
+            )
     traces = normalize_traces(monitor_dags)
-    return make_quality_trace_envelope(
-        traces,
-        question_ids=[str(idx) for idx in range(len(traces))],
-    )
+    return make_quality_trace_envelope(traces, question_ids=question_ids)

@@ -100,7 +100,7 @@ def run_passage_reranker_node(
 	)
 	# trace: rerank (cross-encoder over query × candidate passages) — one call/query.
 	if "__qid__" in best_result.columns:
-		from rag_stack_evaluator.static_rag_evaluator import recording as _rec
+		from rag_stack.evaluation import _recording as _rec
 		_qids = best_result["__qid__"].tolist()
 		_q = (best_result["query"].astype(str).tolist()
 			  if "query" in best_result.columns else [""] * len(_qids))

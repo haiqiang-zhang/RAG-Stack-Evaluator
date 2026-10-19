@@ -10,9 +10,10 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 
-MODULE = Path(__file__).resolve().parents[1] / "rag_stack_evaluator/integrations/mtrag.py"
+MODULE = Path(__file__).resolve().parents[1] / "examples/mtrag/rag_stack_mtrag/scoring.py"
 SPEC = importlib.util.spec_from_file_location("mtrag_contract_test", MODULE)
 mtrag = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(mtrag)
@@ -61,6 +62,19 @@ def fixture_inputs(tasks):
 
 
 class MTRagAdapterTests(unittest.TestCase):
+    def test_legacy_import_forwards_to_optional_example(self):
+        legacy_path = MODULE.parents[3] / "rag_stack_evaluator/integrations/mtrag.py"
+        spec = importlib.util.spec_from_file_location("legacy_mtrag_test", legacy_path)
+        legacy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(legacy)
+        with patch.object(legacy, "import_module", return_value=mtrag) as load:
+            self.assertIs(legacy.score_with_mtrag, mtrag.score_with_mtrag)
+            load.assert_called_once_with("rag_stack_mtrag.scoring")
+        absent = ModuleNotFoundError("Optional package absent", name="rag_stack_mtrag")
+        with patch.object(legacy, "import_module", side_effect=absent):
+            with self.assertRaisesRegex(ImportError, "pip install --no-deps -e"):
+                legacy.mt_rag_faithfulness
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="mtrag_contract_test_")
         self.addCleanup(self.temporary.cleanup)

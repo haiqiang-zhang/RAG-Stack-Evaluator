@@ -73,7 +73,7 @@ def run_query_expansion_node(
 	)
 	# trace: query_expansion is an LLM call → "generate" (input=query, output=expansion).
 	if "__qid__" in best_result.columns:
-		from rag_stack_evaluator.static_rag_evaluator import recording as _rec
+		from rag_stack.evaluation import _recording as _rec
 		_qids = best_result["__qid__"].tolist()
 		_q = (best_result["query"].astype(str).tolist()
 			  if "query" in best_result.columns else [""] * len(_qids))

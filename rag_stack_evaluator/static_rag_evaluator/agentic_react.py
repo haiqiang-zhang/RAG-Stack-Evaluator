@@ -116,7 +116,7 @@ def run_react(
             finished at the cap exit truncated; the last allowed round never
             executes a Search (its Observation could not be consumed).
     """
-    from rag_stack_evaluator.static_rag_evaluator import recording as _rec
+    from rag_stack.evaluation import _recording as _rec
 
     questions = [str(q) for q in qa_data["query"].tolist()]
     n = len(questions)
