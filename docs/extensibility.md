@@ -1,4 +1,4 @@
-# Evaluator extension interface
+# Evaluator API Reference
 
 An evaluator supplies two observations for each resolved candidate: scalar
 quality scores and RAG-IR, the pair `(workflow, trace)`. RAG-Stack owns search,

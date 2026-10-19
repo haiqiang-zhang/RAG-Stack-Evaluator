@@ -35,7 +35,7 @@ External backends implement the public `Evaluator` protocol and return an
 `EvaluationResult` containing scores and RAG-IR. `TraceSession` supplies exact
 component input/output hooks, and `BackendSpec` plus Python entry points make
 backends discoverable by the host. See the complete
-[extension interface](docs/extensibility.md) and runnable
+[Evaluator API Reference](docs/extensibility.md) and runnable
 [MT-RAG example](examples/mtrag/README.md).
 
 Existing `rag_stack_evaluator.base.BaseEvaluator` subclasses remain supported.

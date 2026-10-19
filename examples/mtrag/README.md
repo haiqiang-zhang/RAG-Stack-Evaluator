@@ -6,7 +6,7 @@ and a serving trace through public hooks. MT-RAG scores the answers afterward.
 The adapter returns `EvaluationResult(metrics, trace, workflow)` through the
 same interface as built-in evaluator backends.
 
-The public API is described in [Evaluator extensibility](../../docs/extensibility.md).
+The public API is described in [Evaluator API Reference](../../docs/extensibility.md).
 
 ## 1. What this example demonstrates
 
