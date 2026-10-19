@@ -28,6 +28,14 @@ from rag_stack_evaluator.static_rag_evaluator.evaluation.metric.deepeval_metrics
 from rag_stack_evaluator.static_rag_evaluator.evaluation.util import cast_metrics
 from rag_stack_evaluator.static_rag_evaluator.schema.metricinput import MetricInput
 
+
+def mt_rag_faithfulness(metric_inputs, **kwargs):
+	"""Load the optional external-judge adapter only when this metric is used."""
+	from rag_stack_evaluator.integrations.mtrag import mt_rag_faithfulness as score
+
+	return score(metric_inputs, **kwargs)
+
+
 GENERATION_METRIC_FUNC_DICT = {
 	func.__name__: func
 	for func in [
@@ -45,6 +53,7 @@ GENERATION_METRIC_FUNC_DICT = {
 		deepeval_contextual_relevancy,
 		deepeval_answer_relevancy,
 		deepeval_answer_correctness,
+		mt_rag_faithfulness,
 	]
 }
 

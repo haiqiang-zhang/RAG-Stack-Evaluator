@@ -192,6 +192,7 @@ packages = ["rag_stack_evaluator"]
 include = [
     "/rag_stack_evaluator",
     "/example",
+    "/examples",
     "/docs",
     "/.gitmodules",
     "/scripts",

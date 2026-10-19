@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-stack-mtrag-example"
+version = "0.1.0"
+description = "External RAG pipeline and MT-RAG evaluator integration example"
+requires-python = ">=3.10"
+dependencies = ["rag-stack-evaluator"]
+
+[project.entry-points."rag_stack.evaluators"]
+mtrag = "rag_stack_mtrag.backend:BACKEND"
+
+[tool.setuptools.packages.find]
+include = ["rag_stack_mtrag*"]

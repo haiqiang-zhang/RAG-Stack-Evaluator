@@ -31,9 +31,15 @@ submodule, with installation and runtime details in the
 
 ## Backend selection
 
-The shared interface is `rag_stack_evaluator.base.BaseEvaluator`. The lazy
-factory constructs either backend without duplicating evaluator selection in
-the host:
+External backends implement the public `Evaluator` protocol and return an
+`EvaluationResult` containing scores and RAG-IR. `TraceSession` supplies exact
+component input/output hooks, and `BackendSpec` plus Python entry points make
+backends discoverable by the host. See the complete
+[extension interface](docs/extensibility.md) and runnable
+[MT-RAG example](examples/mtrag/README.md).
+
+Existing `rag_stack_evaluator.base.BaseEvaluator` subclasses remain supported.
+The lazy factory constructs the selected backend:
 
 ```python
 from rag_stack_evaluator.factory import create_quality_evaluator
@@ -45,8 +51,9 @@ evaluator = create_quality_evaluator(
 )
 ```
 
-`create_quality_evaluator` also accepts `dataset` and `project_dir`, and
-`flashrag_options` for the optional backend. Direct static quality and measured
+`create_quality_evaluator` also accepts `dataset`, `project_dir`, and
+`backend_options` for a registered backend (`flashrag_options` remains supported
+for existing FlashRAG callers). Direct static quality and measured
 imports remain supported. `supported_metrics(backend)` and
 `supported_pipeline_modes(backend)` in the same factory module expose backend
 capabilities for host validation without importing optional FlashRAG runtime
