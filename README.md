@@ -1,6 +1,6 @@
 # RAG-Stack Evaluator
 
-RAG-Stack Evaluator provides the `static_gt` and optional `flashrag` backends,
+RAG-Stack Evaluator provides the `static_gt` backend,
 real-hardware measured execution, dataset adapters, scoring, and vLLM
 instrumentation. RAG-Stack owns the evaluator interface, registry, and public
 tracing hooks; other backend providers use that same contract. This package
@@ -16,7 +16,7 @@ from rag_stack_evaluator.static_rag_evaluator import (
 
 This distribution owns the `rag_stack_evaluator` package, including
 `rag_stack_evaluator.static_rag_evaluator`,
-`rag_stack_evaluator.flashrag_quality_evaluator`, and
+and
 `rag_stack_evaluator.vllm_instrumentation`. It does not contribute modules to
 the host's `rag_stack` namespace.
 
@@ -27,9 +27,9 @@ Install and run it through a compatible RAG-Stack checkout; the direct install
 commands below are for developing the submodule in that host environment.
 RAG-Stack owns optimization, search-space resolution, cost models, shared
 contracts, evaluator registration, and public component hooks. Backend implementations and their unit tests are maintained here.
-The optional FlashRAG fork is pinned as this project's nested `FlashRAG`
-submodule, with installation and runtime details in the
-[FlashRAG guide](docs/flashrag.md).
+FlashRAG is a separate top-level submodule of RAG-Stack. Its backend and
+component instrumentation live in `flashrag.integrations.rag_stack`; this
+package does not own or register it.
 
 ## Backend selection
 
@@ -37,11 +37,9 @@ Every registered backend implements the host's `Evaluator` protocol and returns
 an `EvaluationResult` containing scores and RAG-IR. RAG-Stack's `TraceSession`
 supplies exact component input/output hooks, and its `BackendSpec` plus Python
 entry points make providers discoverable. This distribution registers
-`static_gt` and `flashrag` through the same entry-point group as external
-plugins. See the host-owned
-[Evaluator API Reference](https://github.com/haiqiang-zhang/rag-stack/blob/main/docs/evaluator_api.md)
-and runnable
-[MT-RAG example](https://github.com/haiqiang-zhang/rag-stack/tree/main/examples/mtrag).
+`static_gt` through the same `rag_stack.evaluators` entry-point group as other
+providers. The host's `docs/evaluator_api.md` documents the shared interface,
+and `docs/flashrag.md` describes the separate FlashRAG integration.
 
 Existing `rag_stack_evaluator.base.BaseEvaluator` subclasses remain supported.
 The host registry constructs the selected backend:
@@ -52,7 +50,7 @@ from rag_stack.evaluation.registry import create_quality_evaluator
 evaluator = create_quality_evaluator(
     dataset_manager=dataset_manager,
     project_dir=dataset_manager.project_dir,
-    backend="static_gt",  # Default; select "flashrag" for the optional backend.
+    backend="static_gt",
 )
 ```
 
@@ -63,8 +61,7 @@ for existing FlashRAG callers; new code uses `backend_options`. Direct static qu
 imports remain supported. `supported_metrics(backend)` and
 `supported_pipeline_modes(backend)` in the same host registry expose backend
 capabilities for host validation without importing optional FlashRAG runtime
-modules. See the [FlashRAG guide](docs/flashrag.md) for its separate settings and
-execution contract.
+modules.
 
 ## Installation
 
@@ -92,8 +89,6 @@ uv pip install --torch-backend cu128 \
 # On NVIDIA driver >=580, use --torch-backend cu130 and cu13 in both
 # editable requirements instead.
 
-# Optional: only for global.eval_backend: flashrag.
-uv pip install -e RAG-Stack-Evaluator/FlashRAG
 ```
 
 The commands below are only for developing this submodule after the compatible
@@ -110,9 +105,6 @@ uv pip install --torch-backend cu128 -e '.[cu12,faiss]'
 # NVIDIA driver >=580.
 uv pip install --torch-backend cu130 -e '.[cu13,faiss]'
 
-# Optional FlashRAG backend, from this evaluator repository root.
-git submodule update --init --recursive FlashRAG
-uv pip install -e FlashRAG
 ```
 
 Do not install the `cu12` and `cu13` extras together. Native benchmark
@@ -156,10 +148,8 @@ to the gateway itself.
 
 This section defines the static quality and measured evaluation input
 contract. Inputs outside this contract are caller errors even if a particular
-implementation happens to accept them. The optional FlashRAG quality backend
-uses the [FlashRAG contract](docs/flashrag.md#resolved-input-contract); it shares
-the resolved pipeline boundary and canonical trace format, but uses its own
-method settings and native metrics. `static_gt` remains the default backend.
+implementation happens to accept them. `static_gt` is the default backend;
+other providers document their own settings and native metrics in the host.
 
 ### 1. Resolved pipeline config only
 

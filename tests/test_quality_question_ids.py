@@ -10,9 +10,6 @@ from rag_stack_evaluator.backends import _EngineAdapter
 from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
     StaticRAGEvaluatorQualityOnly, _publish_quality_trace,
 )
-from rag_stack_evaluator.flashrag_quality_evaluator.flashrag_quality_evaluator import (
-    _quality_trace_envelope,
-)
 
 
 def calls(tokens):
@@ -72,30 +69,3 @@ def test_static_duplicate_public_ids_fail_before_callback():
             lambda trace: pytest.fail("published invalid cohort"),
             question_id_map={7: "same", 2: "same"},
         )
-
-
-def monitor_dag(qid, tokens):
-    return {"query_id": qid, "nodes": [{
-        "node_type": "generate", "step_idx": 0, "model_id": "fixture",
-        "input_tokens": tokens, "output_tokens": 2,
-    }]}
-
-
-def test_flashrag_preserves_monitor_question_association_when_dataset_order_differs():
-    envelope = _quality_trace_envelope(
-        [monitor_dag("question-beta", 19), monitor_dag("question-alpha", 7)],
-        expected_question_ids=["question-alpha", "question-beta"],
-    )
-    assert [(q["question_id"], q["calls"][0]["input_tokens"]) for q in envelope["queries"]] == [
-        ("question-beta", 19), ("question-alpha", 7),
-    ]
-
-
-@pytest.mark.parametrize("actual,expected", [
-    (["alpha"], ["alpha", "beta"]),
-    (["alpha", "wrong"], ["alpha", "beta"]),
-    (["alpha", "alpha"], ["alpha", "beta"]),
-])
-def test_flashrag_rejects_missing_or_misattributed_monitor_questions(actual, expected):
-    with pytest.raises(RuntimeError, match="every dataset question ID"):
-        _quality_trace_envelope([monitor_dag(qid, 1) for qid in actual], expected_question_ids=expected)

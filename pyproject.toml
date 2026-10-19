@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "rag-stack-evaluator"
 version = "0.0.1"
-description = "Static, FlashRAG, and measured-performance evaluation for RAG-Stack"
+description = "Static quality and measured-performance evaluation for RAG-Stack"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0 AND CC-BY-NC-4.0"
@@ -101,7 +101,6 @@ dependencies = [
 
 [project.entry-points."rag_stack.evaluators"]
 static_gt = "rag_stack_evaluator.backends:STATIC_GT"
-flashrag = "rag_stack_evaluator.backends:FLASHRAG"
 
 [project.optional-dependencies]
 # FAISS stays explicit because native deployments may prefer the matching

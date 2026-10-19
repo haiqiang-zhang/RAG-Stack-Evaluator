@@ -67,14 +67,6 @@ def _create_static(context: EvaluatorContext) -> Evaluator:
     ))
 
 
-def _create_flashrag(context: EvaluatorContext) -> Evaluator:
-    from rag_stack_evaluator.flashrag_quality_evaluator import FlashRAGQualityEvaluator
-
-    return _EngineAdapter(FlashRAGQualityEvaluator(
-        context.dataset, context.project_dir, dataset_manager=context.dataset_manager,
-        flashrag_options=context.options,
-    ))
-
 
 def _static_metrics() -> tuple[str, ...]:
     # Preserve the built-in registry's lazy discovery and optional dependencies.
@@ -96,27 +88,11 @@ def _static_metrics() -> tuple[str, ...]:
     return tuple(sorted(metrics))
 
 
-def _flashrag_metrics() -> tuple[str, ...]:
-    from rag_stack_evaluator.flashrag_quality_evaluator.config_translator import supported_metrics
-
-    return supported_metrics()
-
-
-def _flashrag_modes() -> tuple[str, ...]:
-    from rag_stack_evaluator.flashrag_quality_evaluator.pipeline_factory import supported_pipeline_modes
-
-    return supported_pipeline_modes()
-
 
 STATIC_GT = BackendSpec(
         name="static_gt", factory=_create_static, metrics=_static_metrics,
         pipeline_modes=("react", "sequential"), supports_measured=True, supports_static_ir=True,
 )
 
-FLASHRAG = BackendSpec(
-        name="flashrag", factory=_create_flashrag, metrics=_flashrag_metrics,
-        pipeline_modes=_flashrag_modes, pipeline_style="methods",
-)
 
-
-__all__ = ["STATIC_GT", "FLASHRAG"]
+__all__ = ["STATIC_GT"]

@@ -3,7 +3,6 @@
 Generic API/discovery tests live in the host repository that owns the contract.
 """
 
-from dataclasses import replace
 from types import SimpleNamespace
 import sys
 
@@ -38,7 +37,6 @@ class Engine:
 
 @pytest.mark.parametrize("descriptor, module, symbol", [
     (backends.STATIC_GT, "rag_stack_evaluator.static_rag_evaluator", "StaticRAGEvaluatorQualityOnly"),
-    (backends.FLASHRAG, "rag_stack_evaluator.flashrag_quality_evaluator", "FlashRAGQualityEvaluator"),
 ])
 def test_all_descriptors_construct_the_same_typed_interface(monkeypatch, descriptor, module, symbol):
     monkeypatch.setitem(sys.modules, module, SimpleNamespace(**{symbol: Engine}))
@@ -54,8 +52,6 @@ def test_all_descriptors_construct_the_same_typed_interface(monkeypatch, descrip
     assert result.metrics == {"quality": 0.75}
     assert result.trace is seen[0]
     assert evaluator.call == ({"node_lines": []}, "run", ["quality"])
-    if descriptor is backends.FLASHRAG:
-        assert evaluator.flashrag_options == {"seed": 5}
 
 
 def test_adapter_preserves_aggregate_and_fingerprint_metadata_separately():
@@ -85,7 +81,7 @@ def test_api_and_base_compatibility_imports_have_host_type_identity():
 def test_compatibility_factory_delegates_to_host_registry(monkeypatch):
     monkeypatch.setattr(registry, "_BACKENDS", {})
     monkeypatch.setattr(registry, "_entry_points", lambda: ())
-    registry.register_backend(replace(backends.FLASHRAG, factory=lambda context: Engine(
+    registry.register_backend(registry.BackendSpec(name="flashrag", metrics=("quality",), factory=lambda context: Engine(
         dataset_manager=context.dataset_manager, flashrag_options=context.options,
     )))
     manager = object()
@@ -102,10 +98,8 @@ def test_selected_descriptor_identity_uses_the_host_registry(monkeypatch):
     monkeypatch.setattr(registry, "_BACKENDS", {})
     monkeypatch.setattr(registry, "_entry_points", lambda: (
         SimpleNamespace(name="static_gt", load=lambda: backends.STATIC_GT),
-        SimpleNamespace(name="flashrag", load=lambda: backends.FLASHRAG),
     ))
     assert registry.get_backend_spec("static_gt") is backends.STATIC_GT
-    assert registry.get_backend_spec("flashrag") is backends.FLASHRAG
     assert factory.get_backend_spec("static_gt") is registry.get_backend_spec("static_gt")
 
 
