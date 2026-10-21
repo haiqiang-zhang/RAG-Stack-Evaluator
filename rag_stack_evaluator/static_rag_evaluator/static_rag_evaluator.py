@@ -265,6 +265,9 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 		if run.trace is not None:
 			quality["__execution_dag__"] = run.trace
 			return quality
+		if any(node.stage in {"lexical_retrieval", "hybrid_retrieval"}
+			for nodes in run.node_lines.values() for node in nodes):
+			raise ValueError("Lexical/hybrid retrieval requires its observed execution trace; no inferred fallback is available")
 		# CM feedback payload (cost-model path ONLY): a trace_v1 execution DAG when
 		# rag_ir_mode=dynamic, else the legacy aggregate fanout (static engine).
 		# The measured path never builds this.
@@ -378,7 +381,10 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 		    sequential mode. When omitted, the legacy quality node-line runner is
 		    used unchanged.
 		"""
-		config = deepcopy(config)
+		from rag_stack.pipeline_contract import normalize_retrieval_aliases
+		config = normalize_retrieval_aliases(config)
+		from rag_stack_evaluator.static_rag_evaluator.retrieval_result import validate_retrieval_capabilities
+		validate_retrieval_capabilities(config)
 
 		# Optional qa_data subsample for SMOKE / measured per-trial runs.
 		_orig_qa_data = None
@@ -1314,40 +1320,22 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 
 		if "generated_texts" in final_result.columns:
 			merged["generated_texts"] = final_result["generated_texts"].values
-		# ID source for retrieval_recall etc.: prefer the pre-rerank semantic
-		# IDs so the metric reports pure retriever quality (pre-rerank stages
-		# only). Falls back to post-rerank retrieved_ids when semantic stage
-		# didn't run (e.g. pure-lexical pipelines).
-		if "retrieved_ids_semantic" in final_result.columns:
-			merged["retrieved_ids"] = final_result["retrieved_ids_semantic"].values
-		elif "retrieved_ids" in final_result.columns:
-			merged["retrieved_ids"] = final_result["retrieved_ids"].values
-
-		# Auto-collect retrieved_contents using the same cast logic as all other nodes
+		# Score the effective retrieval output before reranking/compression.
+		# Legacy dense artifacts retain their semantic provenance fallback.
+		for suffix in ("_retrieval", "_semantic", "_lexical", ""):
+			if "retrieved_contents" + suffix in final_result.columns:
+				merged["retrieved_contents_retrieval"] = final_result["retrieved_contents" + suffix].values
+				if "retrieved_ids" + suffix in final_result.columns:
+					merged["retrieved_ids"] = final_result["retrieved_ids" + suffix].values
+				break
+		else:
+			raise ValueError("Missing effective pre-rerank retrieval output in final pipeline result")
+		if "retrieved_contents_semantic" in final_result.columns:
+			merged["retrieved_contents_semantic"] = final_result["retrieved_contents_semantic"].values
 		try:
 			merged["retrieved_contents"] = cast_retrieved_contents(final_result)
 		except ValueError:
-			pass  # no retrieval columns — metrics requiring context will get None
-
-		# Preserve the pre-reranker / pre-compressor semantic-retrieval output so
-		# retrieval_token_* (and pre-rerank retrieval_recall) can isolate raw
-		# retriever quality. The rag stack assumes EVERY pipeline runs semantic
-		# retrieval, so this column is an INVARIANT here: semantic_retrieval emits
-		# `retrieved_contents_semantic` and every downstream node preserves it
-		# (concat-based) — the only node that ever dropped it was a retrieval-side
-		# node's drop_retrieval_columns, now fixed to drop only the unsuffixed
-		# names. Assert rather than soft-skip: a missing column means a node
-		# regressed that contract, and silently skipping nulls retrieval_token_*
-		# which then aggregates to a misleading 0.0 in all_evaluations.csv.
-		assert "retrieved_contents_semantic" in final_result.columns, (
-			"retrieved_contents_semantic missing from the final pipeline result. "
-			"Every pipeline is assumed to run semantic retrieval, and that column "
-			"must survive to evaluation for retrieval_token_*/pre-rerank "
-			"retrieval_recall. A retrieval-side node likely dropped it — check "
-			"drop_retrieval_columns (utils/cast.py) and any node that rebuilds the "
-			f"result frame. Present columns: {sorted(final_result.columns)}"
-		)
-		merged["retrieved_contents_semantic"] = final_result["retrieved_contents_semantic"].values
+			pass
 
 		return MetricInput.from_dataframe(merged)
 

@@ -13,6 +13,8 @@ from copy import deepcopy
 import inspect
 import logging
 from pathlib import Path
+
+import rag_stack_evaluator
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -25,7 +27,7 @@ from rag_stack_evaluator.generation_protocol import (
     resolve_generation_protocol,
 )
 
-ROOT = Path(__file__).resolve().parents[1] / "rag_stack_evaluator"
+ROOT = Path(rag_stack_evaluator.__file__).resolve().parent.parent / "rag_stack_evaluator"
 
 
 def _definitions(path, names, namespace):

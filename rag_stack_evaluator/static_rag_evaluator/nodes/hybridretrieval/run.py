@@ -12,6 +12,7 @@ from rag_stack_evaluator.static_rag_evaluator.schema.metricinput import MetricIn
 from rag_stack_evaluator.static_rag_evaluator.strategy import measure_speed
 from rag_stack_evaluator.static_rag_evaluator.utils.util import apply_recursive, to_list
 from rag_stack.security import safe_dataframe_to_csv
+from rag_stack_evaluator.static_rag_evaluator.fusion_trace import take_fusion_observations, record_fusion_observations
 
 
 def run_hybrid_retrieval_node(
@@ -62,6 +63,7 @@ def run_hybrid_retrieval_node(
 		**module_param,
 	)
 	average_time = execution_time / len(result)
+	fusion_observations = take_fusion_observations(result)
 
 	if strategies.get("metrics"):
 		result = evaluate_retrieval_node(result, metric_inputs, strategies.get("metrics"))
@@ -85,11 +87,15 @@ def run_hybrid_retrieval_node(
 		columns=list(RETRIEVAL_METRIC_FUNC_DICT.keys()), inplace=True, errors="ignore"
 	)
 	best_result = pd.concat([previous_result, result], axis=1)
+	from rag_stack_evaluator.static_rag_evaluator.retrieval_result import snapshot_retrieval_result
+	snapshot_retrieval_result(best_result, "hybrid_retrieval")
 	best_result.to_parquet(
 		os.path.join(save_dir, f"best_{os.path.splitext(filename)[0]}.parquet"),
 		index=False,
 	)
 	safe_dataframe_to_csv(summary_df, os.path.join(save_dir, "summary.csv"), index=False)
+	if "__qid__" in best_result.columns:
+		record_fusion_observations(best_result["__qid__"].tolist(), fusion_observations)
 	return best_result
 
 

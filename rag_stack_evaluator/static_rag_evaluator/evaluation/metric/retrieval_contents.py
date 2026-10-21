@@ -1,26 +1,11 @@
 # Portions derived from AutoRAG (https://github.com/Marker-Inc-Korea/AutoRAG), Apache-2.0.
 # Modified by the RAG-Stack authors for namespace and runtime integration; see LICENSE.autorag and NOTICE.
 
-"""Content-based retrieval metrics.
+"""Token overlap against the effective retrieval output before reranking.
 
-These compare retrieved chunk text against GT chunk text via token-level F1
-(see ``single_token_f1``). Two design choices are baked into this module:
-
-1. **Pre-reranker source.** ``pred = metric_input.retrieved_contents_semantic``
-   — the post-semantic-retrieval text BEFORE the reranker / compressor mutate
-   it. This isolates "raw retriever quality" so the metric reflects just the
-   pre-reranker stages (query_expansion → vectordb → corpus → semantic_retrieval)
-   and is non-redundant with ``deepeval_context_*`` which judge the post-compressor
-   pipeline-final context.
-
-2. **Chunker-robust GT.** ``gt = metric_input.retrieval_gt_contents`` — the
-   text precomputed once from the original pre-chunked corpus into qa.parquet
-   and stored as a column. Independent of any per-eval chunker re-chunking,
-   so values stay comparable across the chunker search-space dimension.
-
-If either field is missing (e.g. semantic retrieval skipped), the metric
-returns None via the ``@autorag_metric`` decorator's ``fields_to_check``
-guard, which the aggregation step filters out.
+Dense, lexical and hybrid pipelines use the same neutral retrieval snapshot.
+Legacy callers that only provide semantic contents retain their old behavior.
+Ground truth remains chunker-independent text in ``retrieval_gt_contents``.
 """
 
 import itertools
@@ -46,9 +31,9 @@ def single_token_f1(ground_truth: str, prediction: str):
 	return precision, recall, f1
 
 
-@autorag_metric(fields_to_check=["retrieved_contents_semantic", "retrieval_gt_contents"])
+@autorag_metric(fields_to_check=["effective_retrieved_contents", "retrieval_gt_contents"])
 def retrieval_token_f1(metric_input: MetricInput):
-	pred = metric_input.retrieved_contents_semantic
+	pred = metric_input.effective_retrieved_contents
 	gt = itertools.chain.from_iterable(metric_input.retrieval_gt_contents)
 
 	calculated_results = list(
@@ -59,9 +44,9 @@ def retrieval_token_f1(metric_input: MetricInput):
 	return result_np.max(axis=1).mean()
 
 
-@autorag_metric(fields_to_check=["retrieved_contents_semantic", "retrieval_gt_contents"])
+@autorag_metric(fields_to_check=["effective_retrieved_contents", "retrieval_gt_contents"])
 def retrieval_token_precision(metric_input: MetricInput):
-	pred = metric_input.retrieved_contents_semantic
+	pred = metric_input.effective_retrieved_contents
 	gt = itertools.chain.from_iterable(metric_input.retrieval_gt_contents)
 
 	calculated_results = list(
@@ -72,9 +57,9 @@ def retrieval_token_precision(metric_input: MetricInput):
 	return result_np.max(axis=1).mean()
 
 
-@autorag_metric(fields_to_check=["retrieved_contents_semantic", "retrieval_gt_contents"])
+@autorag_metric(fields_to_check=["effective_retrieved_contents", "retrieval_gt_contents"])
 def retrieval_token_recall(metric_input: MetricInput):
-	pred = metric_input.retrieved_contents_semantic
+	pred = metric_input.effective_retrieved_contents
 	gt = itertools.chain.from_iterable(metric_input.retrieval_gt_contents)
 
 	calculated_results = list(

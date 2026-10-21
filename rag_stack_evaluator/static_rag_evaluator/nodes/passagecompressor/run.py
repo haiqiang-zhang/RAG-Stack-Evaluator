@@ -50,6 +50,9 @@ def run_passage_compressor_node(
 		os.path.join(data_dir, "corpus.parquet"), engine="pyarrow"
 	)
 
+	from copy import deepcopy
+	from rag_stack_evaluator.static_rag_evaluator.utils.cast import cast_retrieved_contents
+	trace_input_contents = deepcopy(cast_retrieved_contents(previous_result))
 	result, execution_time = measure_speed(
 		module.run_evaluator,
 		project_dir=project_dir,
@@ -115,9 +118,7 @@ def run_passage_compressor_node(
 	if "__qid__" in best_result.columns:
 		from rag_stack.evaluation import _recording as _rec
 		_qids = best_result["__qid__"].tolist()
-		_rc_col = next((c for c in ("retrieved_contents", "retrieved_contents_semantic")
-						if c in best_result.columns), None)
-		_rc = best_result[_rc_col].tolist() if _rc_col else [[]] * len(_qids)
+		_rc = trace_input_contents
 		_m = (module_param.get("model_type") or module_param.get("model")
 			  if isinstance(module_param, dict) else None)
 		_rec.record_io("passage_compressor", _qids, _rc, model_id=_m)

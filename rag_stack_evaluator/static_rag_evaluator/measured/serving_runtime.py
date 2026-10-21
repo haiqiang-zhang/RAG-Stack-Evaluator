@@ -37,6 +37,12 @@ from rag_stack_evaluator.static_rag_evaluator.measured.performance_trace import 
 	PERFORMANCE_TRACE_PRIORITY_SEED,
 	make_performance_trace_envelope,
 )
+from rag_stack_evaluator.static_rag_evaluator.fusion_trace import (
+	candidate_profiles,
+	observed_embedding_model_id,
+	record_fusion_observations,
+	take_fusion_observations,
+)
 from rag_stack.system_layout import (
 	decode_batch,
 	dynamic_batch_timeout_s,
@@ -873,7 +879,9 @@ class DirectPureStageService(BaseStageService):
 			merged = self.owner._merge_service_node_result(node, previous, result)
 			service_done = time.perf_counter()
 			if state.record_trace:
-				_record_pure_stage(node, params, merged)
+				_record_pure_stage(node, params, merged, previous_result=previous)
+			# Non-retained rows must also shed private producer metadata.
+			take_fusion_observations(merged)
 			return work_start, service_done, merged
 
 		submit = time.perf_counter()
@@ -1138,7 +1146,8 @@ class BatchedPureStageService(BaseStageService):
 			# executor, so the recorder bound to the run is visible here.
 			for item, part in zip(items, parts):
 				if item["state"].record_trace:
-					_record_pure_stage(node, params, part)
+					_record_pure_stage(node, params, part, previous_result=item["previous"])
+				take_fusion_observations(part)
 			work_done = time.perf_counter()
 			return (
 				work_start,
@@ -4524,10 +4533,12 @@ def _record_pure_stage(
 	node: Any,
 	params: Dict[str, Any],
 	best_result: pd.DataFrame,
+	*, previous_result: Optional[pd.DataFrame] = None,
 ) -> None:
 	from rag_stack.evaluation import _recording as rec
 
 	stage = str(getattr(node, "stage", node))
+	fusion_observations = take_fusion_observations(best_result)
 	if "__qid__" not in best_result.columns:
 		return
 	qids = _qids(best_result)
@@ -4535,26 +4546,27 @@ def _record_pure_stage(
 		best_result["query"].astype(str).tolist()
 		if "query" in best_result.columns else [""] * len(qids)
 	)
-	if stage in {"semantic_retrieval", "lexical_retrieval", "hybrid_retrieval"}:
-		rc_col = next(
-			(c for c in ("retrieved_contents_semantic", "retrieved_contents") if c in best_result.columns),
-			None,
-		)
-		contents = best_result[rc_col].tolist() if rc_col else [[]] * len(qids)
-		rec.record_io("semantic_retrieval_encode", qids, queries, model_id=params.get("embedding_model"))
-		rec.record_io(
-			"semantic_retrieval_vectorsearch",
-			qids,
-			queries,
-			out_texts=contents,
-			model_id=params.get("vectordb") or params.get("model"),
-		)
+	if stage == "semantic_retrieval":
+		queries = best_result["queries"].tolist() if "queries" in best_result else queries
+		contents = best_result["retrieved_contents_semantic"].tolist()
+		rec.record_io("semantic_retrieval_encode", qids, queries,
+			model_id=observed_embedding_model_id(fusion_observations, params.get("embedding_model")), node_id=stage)
+		rec.record_io("semantic_retrieval_vectorsearch", qids, queries,
+			out_texts=contents, model_id=params.get("vectordb") or params.get("model"), node_id=stage,
+			output_profiles=candidate_profiles(fusion_observations))
+		record_fusion_observations(qids, fusion_observations)
+	elif stage == "lexical_retrieval":
+		queries = best_result["queries"].tolist() if "queries" in best_result else queries
+		rec.record_io("lexical_retrieval", qids, queries,
+			out_texts=best_result["retrieved_contents_lexical"].tolist(),
+			model_id="bm25", node_id=stage, output_profiles=candidate_profiles(fusion_observations))
+		record_fusion_observations(qids, fusion_observations)
+	elif stage == "hybrid_retrieval":
+		record_fusion_observations(qids, fusion_observations)
 	elif stage == "passage_reranker":
-		rc_col = next(
-			(c for c in ("retrieved_contents_semantic", "retrieved_contents") if c in best_result.columns),
-			None,
-		)
-		contents = best_result[rc_col].tolist() if rc_col else [[]] * len(qids)
+		from rag_stack_evaluator.static_rag_evaluator.utils.cast import cast_retrieved_contents
+		input_frame = previous_result if previous_result is not None else best_result
+		contents = cast_retrieved_contents(input_frame)
 		in_texts = [
 			[q] + (rc if isinstance(rc, (list, tuple)) else [rc])
 			for q, rc in zip(queries, contents)
@@ -4567,11 +4579,9 @@ def _record_pure_stage(
 			"passage_reranker", qids, in_texts, model_id=_model_id(params),
 		)
 	elif stage == "passage_compressor":
-		rc_col = next(
-			(c for c in ("retrieved_contents", "retrieved_contents_semantic") if c in best_result.columns),
-			None,
-		)
-		contents = best_result[rc_col].tolist() if rc_col else [[]] * len(qids)
+		from rag_stack_evaluator.static_rag_evaluator.utils.cast import cast_retrieved_contents
+		input_frame = previous_result if previous_result is not None else best_result
+		contents = cast_retrieved_contents(input_frame)
 		rec.record_io("passage_compressor", qids, contents, model_id=_model_id(params))
 
 

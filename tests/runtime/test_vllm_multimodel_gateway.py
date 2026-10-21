@@ -4,11 +4,13 @@ import importlib.util
 import json
 from pathlib import Path
 
+import rag_stack_evaluator
+
 import httpx
 from fastapi.testclient import TestClient
 
 
-SCRIPT = Path(__file__).parents[1] / "scripts" / "vllm_multimodel_gateway.py"
+SCRIPT = Path(rag_stack_evaluator.__file__).resolve().parent.parent / "scripts" / "vllm_multimodel_gateway.py"
 SPEC = importlib.util.spec_from_file_location("vllm_multimodel_gateway", SCRIPT)
 assert SPEC and SPEC.loader
 gateway = importlib.util.module_from_spec(SPEC)

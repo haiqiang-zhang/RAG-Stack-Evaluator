@@ -54,7 +54,7 @@ def evaluate_retrieval(
 				metric_input.retrieved_ids = pred_id
 				# Token-overlap retrieval metrics score against the retrieved chunk
 				# TEXT (this node's output) vs retrieval_gt_contents.
-				metric_input.retrieved_contents_semantic = content
+				metric_input.retrieved_contents_retrieval = content
 
 			metric_scores = {}
 			metric_names, metric_params = cast_metrics(metrics)

@@ -5,12 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from dataclasses import asdict
+from typing import Any, TYPE_CHECKING
 
-from rag_stack_evaluator.static_rag_evaluator import (
-    DatasetEvalManager,
-    StaticRAGEvaluatorQualityOnly,
-)
+if TYPE_CHECKING:
+    from rag_stack.evaluation.api import EvaluationResult
 
 
 def load_json_dict(path: str, *, label: str) -> dict[str, Any]:
@@ -33,13 +32,17 @@ def evaluate_with_trace(
     project_dir: str,
     run_dir: str,
     on_trace_ready,
-) -> dict[str, Any]:
+) -> EvaluationResult:
+    from rag_stack.evaluation.registry import create_quality_evaluator
+    from rag_stack_evaluator.static_rag_evaluator import DatasetEvalManager
+
     dataset = DatasetEvalManager(
         project_dir=project_dir,
         qa_data_path=qa_parquet,
         corpus_data_path=corpus_parquet,
     )
-    evaluator = StaticRAGEvaluatorQualityOnly(
+    evaluator = create_quality_evaluator(
+        backend="static_gt",
         dataset_manager=dataset,
         project_dir=project_dir,
     )
@@ -52,7 +55,7 @@ def evaluate_with_trace(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pipeline-config", required=True)
+    parser.add_argument("--algo-config", "--pipeline-config", dest="pipeline_config", required=True, help="Resolved algorithm JSON; no dataset or search space")
     parser.add_argument("--qa", required=True, help="QA Parquet path")
     parser.add_argument("--corpus", required=True, help="Pre-chunked corpus Parquet path")
     parser.add_argument("--project-dir", required=True)
@@ -92,7 +95,7 @@ def main() -> None:
         run_dir=str(run_dir),
         on_trace_ready=on_trace_ready,
     )
-    write_json(quality_output, result)
+    write_json(quality_output, asdict(result))
     print(
         json.dumps(
             {
@@ -100,7 +103,7 @@ def main() -> None:
                 "trace_result": str(trace_output),
                 "callback_count": len(callback_traces),
                 "callback_is_returned_trace": bool(callback_traces)
-                and callback_traces[0] is result.get("__execution_dag__"),
+                and callback_traces[0] is result.trace,
             },
             indent=2,
         )

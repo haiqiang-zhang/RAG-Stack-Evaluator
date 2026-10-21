@@ -68,6 +68,10 @@ def run_generator_node(
 				prompts=previous_result["prompts"].astype(str).tolist(),
 				module_name=getattr(module, "__name__", str(module)),
 				module_param=module_param,
+				retrieval_contexts=next((previous_result[name].tolist() for name in (
+					"retrieved_contents_retrieval", "retrieved_contents_semantic",
+					"retrieved_contents_lexical", "retrieved_contents",
+				) if name in previous_result.columns), None),
 			)
 		except Exception as exc:  # noqa: BLE001 — dedup must never break an eval
 			logger.warning(f"[gen-fp] fingerprint failed ({exc}); running normally")

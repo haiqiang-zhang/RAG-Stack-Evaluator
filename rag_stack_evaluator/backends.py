@@ -50,6 +50,9 @@ class _EngineAdapter:
             if name not in metadata and value is not None
         }
         canonical = isinstance(execution, dict) and "queries" in execution
+        if canonical:
+            from rag_stack.rag_ir.workflow_schema import build_workflow_schema
+            workflow = build_workflow_schema(config, trace=execution)
         return EvaluationResult(
             metrics=metrics,
             trace=execution if canonical else None,

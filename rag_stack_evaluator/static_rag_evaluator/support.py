@@ -255,7 +255,9 @@ def get_stage_components() -> Dict[str, List[str]]:
 	for stage, (module_path, _) in SUPPORT_NODES.items():
 		match = re.search(r"\.nodes\.(\w+)", module_path)
 		if match:
-			path_to_type[match.group(1).split(".")[0]] = stage
+			# The first entry is canonical; later dense/sparse aliases must not
+			# replace semantic_retrieval / lexical_retrieval in discovery.
+			path_to_type.setdefault(match.group(1).split(".")[0], stage)
 
 	# Group modules by stage
 	node_modules: Dict[str, List[str]] = {nt: [] for nt in path_to_type.values()}

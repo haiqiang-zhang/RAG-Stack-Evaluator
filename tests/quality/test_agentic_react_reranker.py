@@ -26,9 +26,17 @@ class _FakeRetriever:
             }
         )
 
-    def _pure(self, queries, **kwargs):
-        assert queries == [["test entity"]]
-        return [["d1", "d2"]], [[0.1, 0.2]]
+    def _pure(self, queries, *, _fusion_observations, **kwargs):
+        assert all(len(query) == 1 for query in queries)
+        # Mirror the real dense node's per-query RRF observations. This is
+        # required by the trace interface even for one candidate list.
+        for calls in _fusion_observations:
+            calls.append({
+                "input_profile": {"items": 2, "list_sizes": [2],
+                                  "list_unique_items": [2], "unique_items": 2},
+                "output_profile": {"items": 2, "unique_items": 2},
+            })
+        return [["d1", "d2"] for _ in queries], [[0.1, 0.2] for _ in queries]
 
 
 class _FakeReranker:
@@ -89,7 +97,7 @@ def test_react_search_can_rerank_and_preserve_semantic_columns(monkeypatch):
 
     trace = rec.to_trace_v1()
     assert [[call["stage"] for call in trace_i] for trace_i in trace] == [
-        ["generator", "semantic_retrieval_encode", "semantic_retrieval_vectorsearch", "passage_reranker", "generator"]
+        ["generator", "semantic_retrieval_encode", "semantic_retrieval_vectorsearch", "retrieval_fusion", "passage_reranker", "generator"]
     ]
 
 
@@ -121,9 +129,6 @@ def test_react_max_iter_caps_rounds_and_skips_dangling_search(monkeypatch):
     recording.set_current_recorder(rec)
     gen = _NeverFinishGenerator()
     retriever = _FakeRetriever()
-    retriever._pure = lambda queries, **kw: (
-        [["d1", "d2"] for _ in queries], [[0.1, 0.2] for _ in queries],
-    )
     try:
         result = run_react(
             qa_data=pd.DataFrame({
@@ -152,7 +157,7 @@ def test_react_max_iter_caps_rounds_and_skips_dangling_search(monkeypatch):
     assert row["generated_texts"] == "No valid answer found"
     trace = rec.to_trace_v1()
     assert [[c["stage"] for c in q] for q in trace] == [
-        ["generator", "semantic_retrieval_encode", "semantic_retrieval_vectorsearch", "generator"]
+        ["generator", "semantic_retrieval_encode", "semantic_retrieval_vectorsearch", "retrieval_fusion", "generator"]
     ]
 
 

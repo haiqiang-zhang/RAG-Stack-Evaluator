@@ -33,7 +33,10 @@ def test_static_publication_maps_internal_ids_before_callback_and_preserves_iden
         return SimpleNamespace(quality={"quality": 0.75}, trace=envelope)
 
     engine._run_pipeline = run_pipeline
-    result = _EngineAdapter(engine).evaluate({}, on_trace_ready=callbacks.append)
+    config = {"node_lines": [{"node_line_name": "main", "nodes": [
+        {"stage": "generator", "modules": [{"component": "vllm", "model": "fixture"}]},
+    ]}]}
+    result = _EngineAdapter(engine).evaluate(config, on_trace_ready=callbacks.append)
     assert callbacks[0] is result.trace
     assert [q["question_id"] for q in callbacks[0]["queries"]] == [
         "question-beta", "question-alpha",
@@ -43,7 +46,7 @@ def test_static_publication_maps_internal_ids_before_callback_and_preserves_iden
     assert recorder_ids == (7, 2)
     assert dataset_mapping == {2: "question-alpha", 7: "question-beta"}
     payload = normalize_backend_result(
-        result, backend="static_gt", pipeline_config={},
+        result, backend="static_gt", pipeline_config=config,
         question_ids=["question-alpha", "question-beta"],
     )
     assert payload["__execution_dag__"] is callbacks[0]

@@ -11,8 +11,9 @@ in cost while retrieving identical content — the exact phantom-knob triple
 measured on ax_s44: token metrics byte-identical, three GT seats spent on
 judge re-rolls of 0.483/0.453/0.468).
 
-Equivalence is judged on CONTENT (queries + contexts + prompts), so sampled
-upstream stages self-invalidate: query expansion at temperature > 0 yields
+Equivalence includes queries, final contexts, prompts and the effective
+pre-rerank retrieval snapshot, so sampled upstream stages self-invalidate:
+query expansion at temperature > 0 yields
 different expansions → different contexts → fingerprint miss → normal eval.
 
 Store layout: ``<project_dir>/fingerprints/gen/<fp>.json`` with two-phase
@@ -51,6 +52,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("RAG-Stack")
 
 _ENV_FLAG = "RAG_STACK_GEN_FP_DEDUP"
+QUALITY_CONTRACT_VERSION = "effective-retrieval-v1"
 # Transport/deployment knobs that cannot change the generated text.  This is
 # public because hardware-independent quality identities must apply the same
 # semantic boundary when canonicalising complete nested algorithm configs.
@@ -104,16 +106,20 @@ def fingerprint(
     prompts: List[str],
     module_name: str,
     module_param: Dict[str, Any],
+    *,
+    retrieval_contexts: Optional[List[Any]] = None,
 ) -> str:
-    """sha256 over the full generation-input content + generator semantics."""
+    """Hash generation inputs, pre-rerank evidence and quality-contract semantics."""
     sem_param = {
         k: _canon(v) for k, v in (module_param or {}).items()
         if k not in TRANSPORT_ONLY_PARAMS
     }
     payload = json.dumps(
         {
+            "quality_contract": QUALITY_CONTRACT_VERSION,
             "queries": [str(q) for q in queries],
             "contexts": _canon(contexts),
+            "retrieval_contexts": _canon(retrieval_contexts),
             "prompts": [str(p) for p in prompts],
             "module": _semantic_module_name(module_name, module_param),
             "param": sem_param,
@@ -146,6 +152,8 @@ def load_complete_record(project_dir: str, fp: str) -> Optional[dict]:
         return None
     if not rec.get("answers") or not isinstance(rec.get("quality"), dict):
         return None
+    if rec.get("quality_contract") != QUALITY_CONTRACT_VERSION:
+        return None
     return rec
 
 
@@ -169,7 +177,8 @@ def save_answers(
         tmp = f"{path}.tmp.{os.getpid()}"
         with open(tmp, "w") as fh:
             json.dump(
-                {"fp": fp, "donor": donor, "answers": list(answers),
+                {"fp": fp, "quality_contract": QUALITY_CONTRACT_VERSION,
+                 "donor": donor, "answers": list(answers),
                  "token_counts": [int(t) for t in token_counts]},
                 fh,
             )

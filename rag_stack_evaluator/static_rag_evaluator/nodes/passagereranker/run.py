@@ -52,6 +52,9 @@ def run_passage_reranker_node(
 		)
 	]
 
+	from copy import deepcopy
+	from rag_stack_evaluator.static_rag_evaluator.utils.cast import cast_retrieved_contents
+	trace_input_contents = deepcopy(cast_retrieved_contents(previous_result))
 	result, execution_time = measure_speed(
 		module.run_evaluator,
 		project_dir=project_dir,
@@ -104,9 +107,7 @@ def run_passage_reranker_node(
 		_qids = best_result["__qid__"].tolist()
 		_q = (best_result["query"].astype(str).tolist()
 			  if "query" in best_result.columns else [""] * len(_qids))
-		_rc_col = next((c for c in ("retrieved_contents_semantic", "retrieved_contents")
-						if c in best_result.columns), None)
-		_rc = best_result[_rc_col].tolist() if _rc_col else [[]] * len(_qids)
+		_rc = trace_input_contents
 		_m = module_param.get("model") if isinstance(module_param, dict) else None
 		# input = query + candidate passages (what the cross-encoder ingests); out=0.
 		_in = [[q] + (rc if isinstance(rc, (list, tuple)) else [rc])

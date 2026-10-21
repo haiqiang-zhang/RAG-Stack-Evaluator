@@ -2,6 +2,8 @@
 
 import importlib.util
 from pathlib import Path
+
+import rag_stack_evaluator
 import sys
 
 import pytest
@@ -24,7 +26,7 @@ def test_old_public_trace_path_uses_the_host_implementation():
 def test_legacy_recorders_share_state_and_monkeypatches(relative_path, monkeypatch):
     # Execute the compatibility file directly so this test does not initialize
     # model-specific instrumentation from the legacy static backend package.
-    path = Path(__file__).resolve().parents[1] / "rag_stack_evaluator" / relative_path
+    path = Path(rag_stack_evaluator.__file__).resolve().parent.parent / "rag_stack_evaluator" / relative_path
     name = "_recording_compat_test"
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)

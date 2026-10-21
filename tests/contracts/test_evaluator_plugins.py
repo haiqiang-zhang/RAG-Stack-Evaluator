@@ -47,11 +47,15 @@ def test_all_descriptors_construct_the_same_typed_interface(monkeypatch, descrip
     assert evaluator.dataset is context.dataset
     assert evaluator.dataset_manager is context.dataset_manager
     seen = []
-    result = evaluator.evaluate({"node_lines": []}, "run", ["quality"], seen.append)
+    config = {"node_lines": [{"node_line_name": "main", "nodes": [
+        {"stage": "generator", "modules": [{"component": "vllm", "model": "test"}]},
+    ]}]}
+    result = evaluator.evaluate(config, "run", ["quality"], seen.append)
     assert isinstance(result, api.EvaluationResult)
     assert result.metrics == {"quality": 0.75}
     assert result.trace is seen[0]
-    assert evaluator.call == ({"node_lines": []}, "run", ["quality"])
+    assert evaluator.call == (config, "run", ["quality"])
+    assert result.workflow is not None
 
 
 def test_adapter_preserves_aggregate_and_fingerprint_metadata_separately():

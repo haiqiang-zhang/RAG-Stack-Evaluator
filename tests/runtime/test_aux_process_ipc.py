@@ -7,14 +7,12 @@ when a module rewrites text).
 """
 
 import os
-import sys
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
-sys.path.insert(0, os.path.dirname(__file__))
-
-from rag_stack_evaluator.static_rag_evaluator.measured.aux_process import (  # noqa: E402
+from rag_stack_evaluator.static_rag_evaluator.measured.aux_process import (
     AUX_PROCESS_STAGES,
     RETRIEVAL_PROCESS_STAGES,
     AuxProcessStage,
@@ -23,7 +21,7 @@ from rag_stack_evaluator.static_rag_evaluator.measured.aux_process import (  # n
     process_isolated_stage,
 )
 
-import aux_process_fixtures as fx  # noqa: E402
+from . import aux_process_fixtures as fx
 
 
 class ReportingReranker(fx.FakeReranker):
@@ -112,7 +110,7 @@ def test_pack_refuses_unknown_ids():
 @pytest.fixture()
 def child_pythonpath():
     """Let the spawn child import the fixtures module."""
-    tests_dir = os.path.dirname(__file__)
+    tests_dir = str(Path(__file__).resolve().parents[2])
     prior = os.environ.get("PYTHONPATH")
     os.environ["PYTHONPATH"] = (
         tests_dir if not prior else tests_dir + os.pathsep + prior

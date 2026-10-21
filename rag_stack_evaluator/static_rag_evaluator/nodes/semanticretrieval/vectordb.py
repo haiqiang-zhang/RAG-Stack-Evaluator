@@ -5,6 +5,7 @@ import itertools
 import logging
 import os
 import time
+from contextlib import nullcontext
 from typing import List, Tuple, Optional
 
 import numpy as np
@@ -36,6 +37,9 @@ from rag_stack_evaluator.static_rag_evaluator.vectordb.base import (
 	add_retrieval_timing,
 )
 from rag_stack_evaluator.static_rag_evaluator import embedding_cache
+from rag_stack_evaluator.static_rag_evaluator.fusion_trace import (
+	FUSION_TRACE_COLUMN,
+)
 
 logger = logging.getLogger("RAG-Stack")
 
@@ -86,14 +90,19 @@ class VectorDB(BaseRetrieval):
 			"retrieved_contents_semantic",
 			"retrieved_ids_semantic",
 			"retrieve_scores_semantic",
+			FUSION_TRACE_COLUMN,
 		]
 	)
 	def pure(self, previous_result: pd.DataFrame, *args, **kwargs):
 		queries = self.cast_to_run(previous_result)
 		pure_params = pop_params(self._pure, kwargs)
+		# Keep observed fusion calls row-aligned across measured batch/process
+		# boundaries. The producer emits them after its encode/search records.
+		observations = [[] for _ in queries]
+		pure_params["_fusion_observations"] = observations
 		ids, scores = self._pure(queries, **pure_params)
 		contents = self._fetch_contents_o1(ids)
-		return contents, ids, scores
+		return contents, ids, scores, observations
 
 	def _fetch_contents_o1(self, ids: List[List[str]]) -> List[List[str]]:
 		"""Fetch retrieved texts via the prebuilt doc_id map and time only lookup."""
@@ -125,6 +134,7 @@ class VectorDB(BaseRetrieval):
 		ef_search: Optional[int] = None,
 		num_threads: Optional[int] = None,
 		parallel_mode: Optional[int] = None,
+		_fusion_observations: Optional[list] = None,
 	) -> Tuple[List[List[str]], List[List[float]]]:
 		"""
 		VectorDB retrieval function.
@@ -231,21 +241,57 @@ class VectorDB(BaseRetrieval):
 		# passages, dedups, and lets expansions only add incremental hits. For
 		# a single-query row it degrades to a rank-sort (no-op). Same RRF as
 		# hybrid retrieval (k=60, AutoRAG default).
-		id_result, score_result = [], []
-		pos = 0
-		for n in row_lens:
-			row_ids, row_scores = rrf_pure(
-				tuple(ids_flat[pos:pos + n]),
-				tuple(scores_flat[pos:pos + n]),
-				60,
-				top_k,
-			)
-			pos += n
-			pairs = sorted(
-				zip(row_scores, row_ids), key=lambda p: p[0], reverse=True
-			)
-			id_result.append([i for _, i in pairs])
-			score_result.append([s for s, _ in pairs])
+		from rag_stack.evaluation import (
+			get_trace_session, summarize_items, summarize_lists, trace_stage,
+		)
+		# Explicit public hook callers record directly. Static quality/measured
+		# producers pass a collector because their encode/search records are
+		# emitted after this function returns; emitting here would invert order.
+		direct_capture = _fusion_observations is None and get_trace_session() is not None
+		capture = direct_capture or _fusion_observations is not None
+		input_profiles = []
+		if capture:
+			pos = 0
+			for n in row_lens:
+				input_profiles.append(summarize_lists(ids_flat[pos:pos + n]))
+				pos += n
+		id_result, score_result, output_profiles = [], [], []
+		scope = (
+			trace_stage("retrieval_fusion", model_id="rrf_pure")
+			if direct_capture else nullcontext()
+		)
+		with scope as call:
+			if call is not None:
+				call.input(profiles=input_profiles)
+			pos = 0
+			for row, n in enumerate(row_lens):
+				row_ids, row_scores = rrf_pure(
+					tuple(ids_flat[pos:pos + n]),
+					tuple(scores_flat[pos:pos + n]),
+					60,
+					top_k,
+				)
+				if capture:
+					output_profile = summarize_items(row_ids)
+					output_profiles.append(output_profile)
+					if _fusion_observations is not None:
+						observation = {
+							"input_profile": input_profiles[row],
+							"output_profile": output_profile,
+						}
+						encoder = getattr(self, "embedding_model", self.vector_store.embedding)
+						model_id = getattr(encoder, "model_name", None)
+						if isinstance(model_id, str) and model_id:
+							observation["embedding_model_id"] = model_id
+						_fusion_observations[row].append(observation)
+				pos += n
+				pairs = sorted(
+					zip(row_scores, row_ids), key=lambda p: p[0], reverse=True
+				)
+				id_result.append([i for _, i in pairs])
+				score_result.append([s for s, _ in pairs])
+			if call is not None:
+				call.output(profiles=output_profiles)
 		_wrapper_segment_done = time.perf_counter()
 		add_retrieval_timing(
 			retrieval_wrapper_active_s=(

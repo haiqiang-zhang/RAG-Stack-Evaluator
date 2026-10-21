@@ -19,6 +19,8 @@ class MetricInput:
 	# pre-reranker stages (query_expansion, vectordb, corpus, semantic_retrieval)
 	# instead of riding on the full 6-node chain like deepeval_context_*.
 	retrieved_contents_semantic: Optional[List[str]] = None
+	# Effective dense, lexical or fused output, before reranking/compression.
+	retrieved_contents_retrieval: Optional[List[str]] = None
 	# NOTE: chunk-UUID retrieval GT (`retrieval_gt`) is deprecated/removed — chunk
 	# UUIDs are unstable under the chunk_size search-space dimension. Retrieval GT
 	# is TEXT, carried in `retrieval_gt_contents` (references / answer), scored by
@@ -30,6 +32,13 @@ class MetricInput:
 	generated_log_probs: Optional[List[float]] = None
 	# Stable QA identity for durable per-case judge evidence.
 	qid: Optional[str] = None
+
+	@property
+	def effective_retrieved_contents(self):
+		# Older callers/serialized results only provide semantic provenance.
+		if self.retrieved_contents_retrieval is not None:
+			return self.retrieved_contents_retrieval
+		return self.retrieved_contents_semantic
 
 	def is_fields_notnone(self, fields_to_check: List[str]) -> bool:
 		for field in fields_to_check:

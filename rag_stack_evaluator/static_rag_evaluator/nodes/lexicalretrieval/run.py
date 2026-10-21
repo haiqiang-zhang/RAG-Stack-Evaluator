@@ -12,6 +12,7 @@ from rag_stack_evaluator.static_rag_evaluator.schema.metricinput import MetricIn
 from rag_stack_evaluator.static_rag_evaluator.strategy import measure_speed
 from rag_stack_evaluator.static_rag_evaluator.utils.util import apply_recursive, to_list
 from rag_stack.security import safe_dataframe_to_csv
+from rag_stack_evaluator.static_rag_evaluator.fusion_trace import candidate_profiles, take_fusion_observations, record_fusion_observations
 
 
 def run_lexical_retrieval_node(
@@ -59,6 +60,7 @@ def run_lexical_retrieval_node(
 		**module_param,
 	)
 	average_time = execution_time / len(result)
+	fusion_observations = take_fusion_observations(result)
 
 	if strategies.get("metrics"):
 		result = evaluate_lexical_retrieval_node(
@@ -92,11 +94,21 @@ def run_lexical_retrieval_node(
 		inplace=True,
 	)
 	best_result = pd.concat([previous_result, result], axis=1)
+	from rag_stack_evaluator.static_rag_evaluator.retrieval_result import snapshot_retrieval_result
+	snapshot_retrieval_result(best_result, "lexical_retrieval")
 	best_result.to_parquet(
 		os.path.join(save_dir, f"best_{os.path.splitext(filename)[0]}.parquet"),
 		index=False,
 	)
 	safe_dataframe_to_csv(summary_df, os.path.join(save_dir, "summary.csv"), index=False)
+	if "__qid__" in best_result.columns:
+		from rag_stack.evaluation import _recording as rec
+		qids = best_result["__qid__"].tolist()
+		queries = best_result["queries" if "queries" in best_result else "query"].tolist()
+		rec.record_io("lexical_retrieval", qids, queries,
+			out_texts=best_result["retrieved_contents_lexical"].tolist(),
+			model_id="bm25", node_id="lexical_retrieval", output_profiles=candidate_profiles(fusion_observations))
+		record_fusion_observations(qids, fusion_observations)
 	return best_result
 
 

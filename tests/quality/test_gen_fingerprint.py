@@ -3,12 +3,14 @@ import importlib.util
 import json
 from pathlib import Path
 
+import rag_stack_evaluator
+
 import pytest
 
 # This store is stdlib-only; avoid importing the evaluator's eager ML stack.
 _spec = importlib.util.spec_from_file_location(
     "generation_fingerprint_test_target",
-    Path(__file__).resolve().parents[1]
+    Path(rag_stack_evaluator.__file__).resolve().parent.parent
     / "rag_stack_evaluator/static_rag_evaluator/gen_fingerprint.py",
 )
 gfp = importlib.util.module_from_spec(_spec)
@@ -40,6 +42,22 @@ def test_fingerprint_ignores_transport_knobs():
                         {**PARAM, "uri": "http://other-host:9999", "batch": 4,
                          "request_timeout": 3.0})
     assert a == b
+
+
+def test_fingerprint_distinguishes_pre_rerank_retrieval_output():
+    dense = gfp.fingerprint(Q, CTX, P, "vllm_api", PARAM, retrieval_contexts=[["dense"]])
+    hybrid = gfp.fingerprint(Q, CTX, P, "vllm_api", PARAM, retrieval_contexts=[["dense", "lexical"]])
+    assert dense != hybrid
+
+
+def test_old_quality_contract_cannot_be_reused(tmp_path):
+    fp = gfp.fingerprint(Q, CTX, P, "vllm_api", PARAM)
+    path = Path(gfp.save_answers(str(tmp_path), fp, ["answer"], [1], donor="legacy"))
+    record = json.loads(path.read_text())
+    record.pop("quality_contract")
+    record["quality"] = {"retrieval_token_recall": 1.0}
+    path.write_text(json.dumps(record))
+    assert gfp.load_complete_record(str(tmp_path), fp) is None
 
 
 @pytest.mark.parametrize(

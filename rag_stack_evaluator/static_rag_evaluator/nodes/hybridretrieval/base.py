@@ -2,25 +2,32 @@
 # Modified by the RAG-Stack authors for namespace and runtime integration; see LICENSE.autorag and NOTICE.
 
 import abc
+import inspect
 
 import pandas as pd
 
 from rag_stack_evaluator.static_rag_evaluator.nodes.retrieval.base import BaseRetrieval
 from rag_stack_evaluator.static_rag_evaluator.utils import result_to_dataframe
 from rag_stack_evaluator.static_rag_evaluator.utils.util import pop_params, fetch_contents
+from rag_stack_evaluator.static_rag_evaluator.fusion_trace import FUSION_TRACE_COLUMN
 
 
 class HybridRetrieval(BaseRetrieval, metaclass=abc.ABCMeta):
 	def __init__(self, project_dir: str, *args, **kwargs):
 		super().__init__(project_dir)
 
-	@result_to_dataframe(["retrieved_contents", "retrieved_ids", "retrieve_scores"])
+	@result_to_dataframe(["retrieved_contents", "retrieved_ids", "retrieve_scores", FUSION_TRACE_COLUMN])
 	def pure(self, previous_result: pd.DataFrame, *args, **kwargs):
 		previous_info = self.cast_to_run(previous_result, *args, **kwargs)
 		_pure_params = pop_params(self._pure, kwargs)
+		observations = [[] for _ in previous_info["queries"]]
+		# CC remains a standalone legacy algorithm; pipeline validation rejects
+		# it until its execution/CM contract is available.
+		if "_fusion_observations" in inspect.signature(self._pure).parameters:
+			_pure_params["_fusion_observations"] = observations
 		ids, scores = self._pure(previous_info, **_pure_params)
 		contents = fetch_contents(self.corpus_df, ids)
-		return contents, ids, scores
+		return contents, ids, scores, observations
 
 	def cast_to_run(self, previous_result: pd.DataFrame, *args, **kwargs):
 		return hybrid_cast(previous_result)

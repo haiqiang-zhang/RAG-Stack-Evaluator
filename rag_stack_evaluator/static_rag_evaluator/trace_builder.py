@@ -50,6 +50,8 @@ def build_static_execution_dag(
     """
     tokenizer = _resolve_tokenizer(config, token_stats)
     stages = [node.stage for nodes in node_lines.values() for node in nodes]
+    if any(stage in {"lexical_retrieval", "hybrid_retrieval"} for stage in stages):
+        raise ValueError("Lexical/hybrid retrieval requires its observed execution trace; reconstruction is unsupported")
     traces: List[List[dict]] = []
 
     generator_input_tokens: List[int] = []

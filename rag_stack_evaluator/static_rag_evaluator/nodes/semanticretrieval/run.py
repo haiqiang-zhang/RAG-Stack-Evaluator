@@ -12,6 +12,12 @@ from rag_stack_evaluator.static_rag_evaluator.schema.metricinput import MetricIn
 from rag_stack_evaluator.static_rag_evaluator.strategy import measure_speed
 from rag_stack_evaluator.static_rag_evaluator.utils.util import apply_recursive, to_list
 from rag_stack.security import safe_dataframe_to_csv
+from rag_stack_evaluator.static_rag_evaluator.fusion_trace import (
+	candidate_profiles,
+	observed_embedding_model_id,
+	record_fusion_observations,
+	take_fusion_observations,
+)
 
 
 def run_semantic_retrieval_node(
@@ -68,6 +74,7 @@ def run_semantic_retrieval_node(
 	)
 	average_time = execution_time / len(result)
 	_timings = get_retrieval_timings()
+	fusion_observations = take_fusion_observations(result)
 
 	if strategies.get("metrics"):
 		result = evaluate_semantic_retrieval_node(
@@ -109,6 +116,8 @@ def run_semantic_retrieval_node(
 		inplace=True,
 	)
 	best_result = pd.concat([previous_result, result], axis=1)
+	from rag_stack_evaluator.static_rag_evaluator.retrieval_result import snapshot_retrieval_result
+	snapshot_retrieval_result(best_result, "semantic_retrieval")
 	best_result.to_parquet(
 		os.path.join(save_dir, f"best_{os.path.splitext(filename)[0]}.parquet"),
 		index=False,
@@ -118,15 +127,16 @@ def run_semantic_retrieval_node(
 	if "__qid__" in best_result.columns:
 		from rag_stack.evaluation import _recording as _rec
 		_qids = best_result["__qid__"].tolist()
-		_q = (best_result["query"].astype(str).tolist()
-			  if "query" in best_result.columns else [""] * len(_qids))
+		_q = (best_result["queries"].tolist() if "queries" in best_result.columns
+			  else best_result["query"].astype(str).tolist())
 		_rc_col = next((c for c in ("retrieved_contents", "retrieved_contents_semantic")
 						if c in best_result.columns), None)
 		_rc = best_result[_rc_col].tolist() if _rc_col else [[]] * len(_qids)
-		_emb = module_param.get("embedding_model") if isinstance(module_param, dict) else None
+		_emb = observed_embedding_model_id(fusion_observations, module_param.get("embedding_model"))
 		_vdb = module_param.get("vectordb") if isinstance(module_param, dict) else None
-		_rec.record_io("semantic_retrieval_encode", _qids, _q, model_id=_emb)  # query → embedding (out=0)
-		_rec.record_io("semantic_retrieval_vectorsearch", _qids, _q, out_texts=_rc, model_id=_vdb)  # query → passages
+		_rec.record_io("semantic_retrieval_encode", _qids, _q, model_id=_emb, node_id="semantic_retrieval")  # query → embedding (out=0)
+		_rec.record_io("semantic_retrieval_vectorsearch", _qids, _q, out_texts=_rc, model_id=_vdb, node_id="semantic_retrieval", output_profiles=candidate_profiles(fusion_observations))  # query → passages
+		record_fusion_observations(_qids, fusion_observations)
 	return best_result
 
 

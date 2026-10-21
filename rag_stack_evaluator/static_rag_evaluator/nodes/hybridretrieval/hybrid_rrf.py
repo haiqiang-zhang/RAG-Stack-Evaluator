@@ -10,13 +10,14 @@ from rag_stack_evaluator.static_rag_evaluator.nodes.hybridretrieval.base import 
 
 
 class HybridRRF(HybridRetrieval):
-	def _pure(self, info: dict, top_k: int, weight: int = 60, rrf_k: int = -1):
+	def _pure(self, info: dict, top_k: int, weight: int = 60, rrf_k: int = -1, _fusion_observations=None):
 		return hybrid_rrf(
 			(info["retrieved_ids_semantic"], info["retrieved_ids_lexical"]),
 			(info["retrieve_scores_semantic"], info["retrieve_scores_lexical"]),
 			top_k,
 			weight,
 			rrf_k,
+			_fusion_observations=_fusion_observations,
 		)
 
 	@classmethod
@@ -47,6 +48,7 @@ def hybrid_rrf(
 	top_k: int,
 	weight: int = 60,
 	rrf_k: int = -1,
+	*, _fusion_observations=None,
 ) -> Tuple[List[List[str]], List[List[float]]]:
 	"""
 	Hybrid RRF function.
@@ -91,7 +93,15 @@ def hybrid_rrf(
 	def rrf_pure_apply(row):
 		ids_tuple = tuple(row[[f"id_{i}" for i in range(len(ids))]].values)
 		scores_tuple = tuple(row[[f"score_{i}" for i in range(len(scores))]].values)
-		return pd.Series(rrf_pure(ids_tuple, scores_tuple, weight, top_k))
+		result = rrf_pure(ids_tuple, scores_tuple, weight, top_k)
+		if _fusion_observations is not None:
+			from rag_stack.evaluation import summarize_items, summarize_lists
+			_fusion_observations[row.name].append({
+				"node_id": "hybrid_retrieval",
+				"input_profile": summarize_lists(ids_tuple),
+				"output_profile": summarize_items(result[0]),
+			})
+		return pd.Series(result)
 
 	df[["rrf_id", "rrf_score"]] = df.apply(rrf_pure_apply, axis=1)
 	return df["rrf_id"].tolist(), df["rrf_score"].tolist()

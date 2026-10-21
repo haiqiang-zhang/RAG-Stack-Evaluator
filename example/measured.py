@@ -7,11 +7,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rag_stack_evaluator.static_rag_evaluator import (
-    DatasetEvalManager,
-    MeasuredProvider,
-    StaticRAGEvaluatorQualityOnly,
-)
 
 
 def load_json_dict(path: str, *, label: str) -> dict[str, Any]:
@@ -40,12 +35,16 @@ def evaluate_measured(
     force_disagg: bool,
     require_admissible: bool,
 ) -> dict[str, Any]:
+    from rag_stack.evaluation.registry import create_quality_evaluator
+    from rag_stack_evaluator.static_rag_evaluator import DatasetEvalManager, MeasuredProvider
+
     dataset = DatasetEvalManager(
         project_dir=project_dir,
         qa_data_path=qa_parquet,
         corpus_data_path=corpus_parquet,
     )
-    evaluator = StaticRAGEvaluatorQualityOnly(
+    evaluator = create_quality_evaluator(
+        backend="static_gt",
         dataset_manager=dataset,
         project_dir=project_dir,
     )
@@ -72,7 +71,7 @@ def evaluate_measured(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pipeline-config", required=True)
+    parser.add_argument("--algo-config", "--pipeline-config", dest="pipeline_config", required=True, help="Resolved algorithm JSON; no dataset or search space")
     parser.add_argument("--system-config", required=True)
     parser.add_argument("--qa", required=True, help="QA Parquet path")
     parser.add_argument("--corpus", required=True, help="Pre-chunked corpus Parquet path")

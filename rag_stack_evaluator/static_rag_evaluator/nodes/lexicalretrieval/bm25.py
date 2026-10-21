@@ -2,6 +2,8 @@
 # Modified by the RAG-Stack authors for namespace and runtime integration; see LICENSE.autorag and NOTICE.
 
 import asyncio
+import hashlib
+import tempfile
 import os
 import pickle
 import re
@@ -19,6 +21,7 @@ from rag_stack_evaluator.static_rag_evaluator.nodes.retrieval.base import (
 	get_bm25_pkl_name,
 )
 from rag_stack_evaluator.static_rag_evaluator.nodes.hybridretrieval.hybrid_rrf import rrf_pure
+from rag_stack_evaluator.static_rag_evaluator.fusion_trace import FUSION_TRACE_COLUMN
 from rag_stack.utils.preprocess import validate_corpus_dataset
 from rag_stack_evaluator.static_rag_evaluator.utils import fetch_contents
 from rag_stack_evaluator.static_rag_evaluator.utils.util import (
@@ -227,20 +230,24 @@ class BM25(BaseRetrieval):
 			"retrieved_contents_lexical",
 			"retrieved_ids_lexical",
 			"retrieve_scores_lexical",
+			FUSION_TRACE_COLUMN,
 		]
 	)
 	def pure(self, previous_result: pd.DataFrame, *args, **kwargs):
 		queries = self.cast_to_run(previous_result)
 		pure_params = pop_params(self._pure, kwargs)
+		observations = [[] for _ in queries]
+		pure_params["_fusion_observations"] = observations
 		ids, scores = self._pure(queries, *args, **pure_params)
 		contents = fetch_contents(self.corpus_df, ids)
-		return contents, ids, scores
+		return contents, ids, scores, observations
 
 	def _pure(
 		self,
 		queries: List[List[str]],
 		top_k: int,
 		ids: Optional[List[List[str]]] = None,
+		_fusion_observations: Optional[list] = None,
 	) -> Tuple[List[List[str]], List[List[float]]]:
 		"""
 		BM25 retrieval function.
@@ -279,8 +286,9 @@ class BM25(BaseRetrieval):
 				self.tokenizer,
 				self.bm25_instance,
 				self.bm25_corpus,
+				_observations=_fusion_observations[row] if _fusion_observations is not None else None,
 			)
-			for input_queries in queries
+			for row, input_queries in enumerate(queries)
 		]
 		loop = get_event_loop()
 		results = loop.run_until_complete(asyncio.gather(*tasks))
@@ -290,7 +298,8 @@ class BM25(BaseRetrieval):
 
 
 async def bm25_pure(
-	queries: List[str], top_k: int, tokenizer, bm25_api: BM25Okapi, bm25_corpus: Dict
+	queries: List[str], top_k: int, tokenizer, bm25_api: BM25Okapi, bm25_corpus: Dict,
+	*, _observations: Optional[list] = None,
 ) -> Tuple[List[str], List[float]]:
 	"""
 	Async BM25 retrieval function.
@@ -327,7 +336,15 @@ async def bm25_pure(
 	# 1/(rank+k)) instead of even budget-splitting — see the rationale in
 	# semanticretrieval/vectordb.py. Single query → rank-sort (no-op); multi-query
 	# (QE) → recall-preserving fusion. Same RRF as hybrid retrieval (k=60).
+	from rag_stack.evaluation import summarize_items, summarize_lists
+	input_profile = summarize_lists(id_result) if _observations is not None else None
 	id_result, score_result = rrf_pure(tuple(id_result), tuple(score_result), 60, top_k)
+	if _observations is not None:
+		_observations.append({
+			"node_id": "lexical_retrieval",
+			"input_profile": input_profile,
+			"output_profile": summarize_items(id_result),
+		})
 	# sort id_result and score_result by score
 	result = [
 		(_id, score)
@@ -373,48 +390,34 @@ def bm25_ingest(
 		raise ValueError(f"Corpus path {corpus_path} is not a pickle file.")
 	validate_corpus_dataset(corpus_data)
 	ids = corpus_data["doc_id"].tolist()
-
-	# Initialize bm25_corpus
-	bm25_corpus = pd.DataFrame()
-
-	# Load the BM25 corpus if it exists and get the passage ids
+	contents = corpus_data["contents"].tolist()
+	# Chunk-size trials replace the active corpus. Never append old chunk IDs:
+	# those passages no longer exist in the active dense index/corpus frame.
+	digest = hashlib.sha256()
+	for doc_id, content in zip(ids, contents):
+		for value in (str(doc_id), str(content)):
+			payload = value.encode("utf-8")
+			digest.update(len(payload).to_bytes(8, "big"))
+			digest.update(payload)
+	signature = digest.hexdigest()
 	if os.path.exists(corpus_path) and os.path.getsize(corpus_path) > 0:
-		with open(corpus_path, "rb") as r:
-			corpus = _safe_pickle_load(r)
-			bm25_corpus = pd.DataFrame.from_dict(corpus)
-		duplicated_passage_rows = bm25_corpus[bm25_corpus["passage_id"].isin(ids)]
-		new_passage = corpus_data[
-			~corpus_data["doc_id"].isin(duplicated_passage_rows["passage_id"])
-		]
-	else:
-		new_passage = corpus_data
-
-	if not new_passage.empty:
-		tokenizer = select_bm25_tokenizer(bm25_tokenizer)
-		if isinstance(tokenizer, PreTrainedTokenizerBase):
-			tokenized_corpus = tokenizer(new_passage["contents"].tolist()).input_ids
-		else:
-			tokenized_corpus = tokenizer(new_passage["contents"].tolist())
-		new_bm25_corpus = pd.DataFrame(
-			{
-				"tokens": tokenized_corpus,
-				"passage_id": new_passage["doc_id"].tolist(),
-			}
-		)
-
-		if not bm25_corpus.empty:
-			bm25_corpus_updated = pd.concat(
-				[bm25_corpus, new_bm25_corpus], ignore_index=True
-			)
-			bm25_dict = bm25_corpus_updated.to_dict("list")
-		else:
-			bm25_dict = new_bm25_corpus.to_dict("list")
-
-		# add tokenizer name to bm25_dict
-		bm25_dict["tokenizer_name"] = bm25_tokenizer
-
-		with open(corpus_path, "wb") as w:
-			pickle.dump(bm25_dict, w)
+		with open(corpus_path, "rb") as handle:
+			cached = _safe_pickle_load(handle)
+		if cached.get("corpus_signature") == signature and cached.get("tokenizer_name") == bm25_tokenizer:
+			return
+	tokenizer = select_bm25_tokenizer(bm25_tokenizer)
+	tokens = tokenizer(contents).input_ids if isinstance(tokenizer, PreTrainedTokenizerBase) else tokenizer(contents)
+	corpus = {"tokens": tokens, "passage_id": ids,
+		"tokenizer_name": bm25_tokenizer, "corpus_signature": signature}
+	temporary = None
+	try:
+		with tempfile.NamedTemporaryFile(dir=os.path.dirname(os.path.abspath(corpus_path)), delete=False) as handle:
+			temporary = handle.name
+			pickle.dump(corpus, handle)
+		os.replace(temporary, corpus_path)
+	finally:
+		if temporary is not None and os.path.exists(temporary):
+			os.unlink(temporary)
 
 
 def select_bm25_tokenizer(

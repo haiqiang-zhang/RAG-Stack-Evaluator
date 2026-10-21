@@ -6,6 +6,8 @@ from copy import deepcopy
 import functools
 from pathlib import Path
 
+import rag_stack_evaluator
+
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel as BM
@@ -14,7 +16,7 @@ from pydantic.v1 import BaseModel
 
 def _production_functions():
     # Execute the actual small utilities without importing model backends.
-    path = Path(__file__).resolve().parents[1] / (
+    path = Path(rag_stack_evaluator.__file__).resolve().parent.parent / (
         "rag_stack_evaluator/static_rag_evaluator/utils/util.py"
     )
     names = {"to_list", "convert_inputs_to_list"}

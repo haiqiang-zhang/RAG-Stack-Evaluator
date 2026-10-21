@@ -1,18 +1,8 @@
-"""Shared cache root + faiss index global-ization.
-
-One root (``<repo>/.cache/rag_stack``, override ``RAG_STACK_CACHE_DIR``) holds
-both the encoded-vector cache and the built faiss indexes. The embedding path
-must stay byte-identical to its historical location (the existing multi-GB
-vector cache must survive), and faiss indexes must resolve UNDER the shared
-root (was project-local → rebuilt per run) while non-faiss stores keep their
-configured path.
-
-Run: python -m pytest tests/test_cache_paths.py -q
-"""
+"""Shared-cache routing and explicit override contracts, isolated from user caches."""
 import os
-import warnings
+from pathlib import Path
 
-warnings.filterwarnings("ignore")
+import pytest
 
 from rag_stack_evaluator.static_rag_evaluator import cache_paths
 from rag_stack_evaluator.static_rag_evaluator import embedding_cache
@@ -20,45 +10,32 @@ from rag_stack_evaluator.static_rag_evaluator.static_rag_evaluator import (
     StaticRAGEvaluatorQualityOnly as _E,
 )
 
-_REPO = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(cache_paths.__file__)))
-)
-_CACHE_ROOT = os.environ.get("RAG_STACK_CACHE_DIR") or os.path.join(
-    _REPO, ".cache", "rag_stack",
-)
+@pytest.fixture(autouse=True)
+def isolated_cache_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAG_STACK_CACHE_DIR", str(tmp_path / "shared-cache"))
+    monkeypatch.delenv("RAG_STACK_EMBED_CACHE", raising=False)
 
 
-def test_embedding_path_byte_identical_to_historical():
-    """The 39G vector cache lives at <repo>/.cache/rag_stack/embeddings — the
-    refactor must resolve to exactly that, or the cache is silently orphaned."""
-    expect = os.path.join(_CACHE_ROOT, "embeddings")
-    assert cache_paths.embeddings_dir() == expect
-    assert embedding_cache.cache_dir() == expect  # the public accessor agrees
+def test_shared_root_routes_embedding_and_index_caches(tmp_path):
+    root = tmp_path / "shared-cache"
+    assert cache_paths.cache_root() == str(root)
+    assert cache_paths.faiss_index_root() == str(root / "faiss")
+    assert cache_paths.embeddings_dir() == str(root / "embeddings")
+    assert embedding_cache.cache_dir() == str(root / "embeddings")
 
 
-def test_shared_root_and_faiss_subdir():
-    assert cache_paths.cache_root() == _CACHE_ROOT
-    assert cache_paths.faiss_index_root() == os.path.join(
-        _CACHE_ROOT, "faiss",
-    )
+def test_legacy_embedding_override_does_not_relocate_indexes(tmp_path, monkeypatch):
+    legacy = tmp_path / "legacy-embeddings"
+    monkeypatch.setenv("RAG_STACK_EMBED_CACHE", str(legacy))
+    assert cache_paths.embeddings_dir() == str(legacy)
+    assert embedding_cache.cache_dir() == str(legacy)
+    assert cache_paths.faiss_index_root() == str(tmp_path / "shared-cache" / "faiss")
 
 
-def test_env_override_relocates_all_subcaches_together():
-    prev = os.environ.get("RAG_STACK_CACHE_DIR")
-    try:
-        os.environ["RAG_STACK_CACHE_DIR"] = "/tmp/xcache"
-        # embeddings honors its own legacy override first; clear it here
-        prev_emb = os.environ.pop("RAG_STACK_EMBED_CACHE", None)
-        assert cache_paths.cache_root() == "/tmp/xcache"
-        assert cache_paths.faiss_index_root() == "/tmp/xcache/faiss"
-        assert cache_paths.embeddings_dir() == "/tmp/xcache/embeddings"
-    finally:
-        if prev is None:
-            os.environ.pop("RAG_STACK_CACHE_DIR", None)
-        else:
-            os.environ["RAG_STACK_CACHE_DIR"] = prev
-        if prev_emb is not None:
-            os.environ["RAG_STACK_EMBED_CACHE"] = prev_emb
+def test_unconfigured_cache_root_follows_evaluator_installation(monkeypatch):
+    monkeypatch.delenv("RAG_STACK_CACHE_DIR")
+    installation = Path(cache_paths.__file__).resolve().parents[2]
+    assert cache_paths.cache_root() == str(installation / ".cache" / "rag_stack")
 
 
 def test_faiss_indexes_redirect_to_global_root():

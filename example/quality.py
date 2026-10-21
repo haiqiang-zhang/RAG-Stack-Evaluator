@@ -5,12 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from dataclasses import asdict
+from typing import Any, TYPE_CHECKING
 
-from rag_stack_evaluator.static_rag_evaluator import (
-    DatasetEvalManager,
-    StaticRAGEvaluatorQualityOnly,
-)
+if TYPE_CHECKING:
+    from rag_stack.evaluation.api import EvaluationResult
 
 
 def load_json_dict(path: str, *, label: str) -> dict[str, Any]:
@@ -32,13 +31,17 @@ def evaluate_quality(
     corpus_parquet: str,
     project_dir: str,
     run_dir: str,
-) -> dict[str, Any]:
+) -> EvaluationResult:
+    from rag_stack.evaluation.registry import create_quality_evaluator
+    from rag_stack_evaluator.static_rag_evaluator import DatasetEvalManager
+
     dataset = DatasetEvalManager(
         project_dir=project_dir,
         qa_data_path=qa_parquet,
         corpus_data_path=corpus_parquet,
     )
-    evaluator = StaticRAGEvaluatorQualityOnly(
+    evaluator = create_quality_evaluator(
+        backend="static_gt",
         dataset_manager=dataset,
         project_dir=project_dir,
     )
@@ -47,7 +50,7 @@ def evaluate_quality(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pipeline-config", required=True)
+    parser.add_argument("--algo-config", "--pipeline-config", dest="pipeline_config", required=True, help="Resolved algorithm JSON; no dataset or search space")
     parser.add_argument("--qa", required=True, help="QA Parquet path")
     parser.add_argument("--corpus", required=True, help="Pre-chunked corpus Parquet path")
     parser.add_argument("--project-dir", required=True)
@@ -72,8 +75,9 @@ def main() -> None:
         project_dir=str(project_dir),
         run_dir=str(run_dir),
     )
-    write_json(output, result)
-    print(json.dumps(result, indent=2, default=str))
+    payload = asdict(result)
+    write_json(output, payload)
+    print(json.dumps(payload, indent=2, default=str))
     print(f"result: {output}")
 
 

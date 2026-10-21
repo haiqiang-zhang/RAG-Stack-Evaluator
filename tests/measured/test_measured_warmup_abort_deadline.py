@@ -13,11 +13,13 @@ import logging
 import math
 import os
 from pathlib import Path
+
+import rag_stack_evaluator
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-SOURCE = Path(__file__).parents[1] / "rag_stack_evaluator/static_rag_evaluator/measured/serving_runtime.py"
+SOURCE = Path(rag_stack_evaluator.__file__).resolve().parent.parent / "rag_stack_evaluator/static_rag_evaluator/measured/serving_runtime.py"
 TREE = ast.parse(SOURCE.read_text())
 FUNCTIONS = {
     node.name: node for node in ast.walk(TREE)

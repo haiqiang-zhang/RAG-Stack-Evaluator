@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from rag_stack_evaluator.static_rag_evaluator.utils.util import fetch_contents
+from rag_stack_evaluator.static_rag_evaluator.fusion_trace import candidate_profiles, record_fusion_observations
 
 logger = logging.getLogger("RAG-Stack")
 
@@ -197,8 +198,10 @@ def run_react(
             for i, _ in searches:
                 retrieval_calls[i] += 1
             sq = [[q] for (_, q) in searches]
+            fusion_observations = [[] for _ in searches]
             ids, scores = retriever._pure(
-                sq, top_k=top_k, nprobe=nprobe, ef_search=ef_search
+                sq, top_k=top_k, nprobe=nprobe, ef_search=ef_search,
+                _fusion_observations=fusion_observations,
             )
             contents = fetch_contents(retriever.corpus_df, ids)
             semantic_ids = ids
@@ -208,14 +211,16 @@ def run_react(
             _squeries = [q for (_i, q) in searches]
             # trace: encode (query embedding) + retrieve (faiss) for this round's
             # searches — record pre-rerank retrieval output.
-            _rec.record_io("semantic_retrieval_encode", _sqids, _squeries, model_id=embedding_model_id)
+            _rec.record_io("semantic_retrieval_encode", _sqids, _squeries, model_id=embedding_model_id, node_id="semantic_retrieval")
             _rec.record_io(
                 "semantic_retrieval_vectorsearch",
                 _sqids,
                 _squeries,
                 out_texts=contents,
-                model_id=embedding_model_id,
+                model_id=embedding_model_id, node_id="semantic_retrieval",
+                output_profiles=candidate_profiles(fusion_observations),
             )
+            record_fusion_observations(_sqids, fusion_observations)
             if reranker is not None:
                 # The reranker node contract (validate_qa_dataset in
                 # cast_to_run) requires the QA identity columns; each search

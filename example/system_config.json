@@ -1,0 +1,91 @@
+{
+  "batch_size_request": 4,
+  "measured_load_concurrency": 4,
+  "measured_warmup_queries": 4,
+  "measured_queries": 16,
+  "batching": {
+    "dynamic_timeout_s": 0.0
+  },
+  "retrieval": {
+    "faiss_num_threads": 1,
+    "faiss_ivf_parallel_mode": 0,
+    "num_servers": 1
+  },
+  "vllm": {
+    "kv_cache_dtype": "auto",
+    "engines": {
+      "generator": {
+        "max_num_seqs": 4
+      }
+    }
+  },
+  "layout": {
+    "total_gpu_slots": 1,
+    "min_total_gpu_slots": 1,
+    "max_total_gpu_slots": 1,
+    "performance_stage_order": [
+      "generator_prefill",
+      "generator_decode"
+    ],
+    "resource_groups": [
+      {
+        "id": "gpu:0",
+        "kind": "gpu",
+        "devices": [
+          "cuda:0"
+        ],
+        "performance_stages": [
+          "generator_prefill",
+          "generator_decode"
+        ]
+      }
+    ],
+    "performance_stages": {
+      "generator_prefill": {
+        "kind": "gpu",
+        "resource": "gpu:0",
+        "devices": [
+          "cuda:0"
+        ],
+        "num_chips": 1,
+        "engine": "generator",
+        "role": "prefill",
+        "tp": 1,
+        "pp": 1
+      },
+      "generator_decode": {
+        "kind": "gpu",
+        "resource": "gpu:0",
+        "devices": [
+          "cuda:0"
+        ],
+        "num_chips": 1,
+        "engine": "generator",
+        "role": "decode",
+        "tp": 1,
+        "pp": 1
+      }
+    },
+    "engines": {
+      "generator": {
+        "pd_serving": "collocated_pd",
+        "devices": [
+          "cuda:0"
+        ],
+        "num_chips": 1,
+        "performance_stages": [
+          "generator_prefill",
+          "generator_decode"
+        ],
+        "tp": 1,
+        "pp": 1
+      }
+    },
+    "gpu_occupants": {
+      "cuda:0": [
+        "generator_prefill",
+        "generator_decode"
+      ]
+    }
+  }
+}

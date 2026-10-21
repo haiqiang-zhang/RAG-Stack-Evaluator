@@ -211,3 +211,9 @@ include = [
 # Public install commands pass --torch-backend cu128/cu130 to match the selected
 # cu12/cu13 vLLM stack. Auto remains the fallback for ad-hoc uv pip installs.
 torch-backend = "auto"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["."]
+addopts = ["--import-mode=importlib", "-p", "no:deepeval", "-p", "no:langsmith_plugin"]

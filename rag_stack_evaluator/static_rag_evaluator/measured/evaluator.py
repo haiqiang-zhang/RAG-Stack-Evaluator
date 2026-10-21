@@ -382,6 +382,7 @@ class MeasuredEvaluator:
 			RETRIEVAL_METRIC_FUNC_DICT,
 		)
 		from rag_stack_evaluator.static_rag_evaluator.utils.cast import drop_retrieval_columns
+		from rag_stack_evaluator.static_rag_evaluator.retrieval_result import snapshot_retrieval_result
 
 		stage = node.stage
 		prev = previous_result.copy().reset_index(drop=True)
@@ -404,7 +405,7 @@ class MeasuredEvaluator:
 					"retrieve_scores": "retrieve_scores_semantic",
 				}
 			)
-			return pd.concat([prev, res], axis=1)
+			return snapshot_retrieval_result(pd.concat([prev, res], axis=1), stage)
 		if stage == "lexical_retrieval":
 			prev = prev.drop(
 				columns=list(RETRIEVAL_METRIC_FUNC_DICT.keys()), errors="ignore"
@@ -416,12 +417,12 @@ class MeasuredEvaluator:
 					"retrieve_scores": "retrieve_scores_lexical",
 				}
 			)
-			return pd.concat([prev, res], axis=1)
+			return snapshot_retrieval_result(pd.concat([prev, res], axis=1), stage)
 		if stage == "hybrid_retrieval":
 			prev = prev.drop(
 				columns=list(RETRIEVAL_METRIC_FUNC_DICT.keys()), errors="ignore"
 			)
-			return pd.concat([prev, res], axis=1)
+			return snapshot_retrieval_result(pd.concat([prev, res], axis=1), stage)
 		if stage in {"passage_reranker", "passage_filter", "passage_augmenter"}:
 			res = res.rename(
 				columns={m: f"{stage}_{m}" for m in metric_names if m in res.columns}

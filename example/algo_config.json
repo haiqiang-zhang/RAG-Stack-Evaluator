@@ -1,0 +1,52 @@
+{
+  "corpus_runtime": {
+    "chunker": {}
+  },
+  "pipeline_runtime": {
+    "mode": "sequential",
+    "rag_dataflow": "sequential"
+  },
+  "vectordb": [],
+  "node_lines": [
+    {
+      "node_line_name": "generation",
+      "nodes": [
+        {
+          "stage": "prompt_maker",
+          "strategy": {
+            "metrics": [],
+            "strategy": "mean"
+          },
+          "modules": [
+            {
+              "component": "fstring",
+              "prompt": "Question: {query}\nAnswer:"
+            }
+          ]
+        },
+        {
+          "stage": "generator",
+          "strategy": {
+            "metrics": [],
+            "strategy": "mean"
+          },
+          "modules": [
+            {
+              "component": "vllm",
+              "model": "Qwen/Qwen2.5-1.5B-Instruct",
+              "max_tokens": 512,
+              "temperature": 0.0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "eval_backend_setting": {
+    "metrics": [
+      {
+        "metric_name": "f1"
+      }
+    ]
+  }
+}
