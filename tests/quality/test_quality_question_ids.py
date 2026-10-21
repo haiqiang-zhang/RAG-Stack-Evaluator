@@ -3,6 +3,7 @@
 from copy import deepcopy
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 
 from rag_stack.evaluator_contract import normalize_backend_result
@@ -38,6 +39,9 @@ def test_static_publication_maps_internal_ids_before_callback_and_preserves_iden
     ]}]}
     result = _EngineAdapter(engine).evaluate(config, on_trace_ready=callbacks.append)
     assert callbacks[0] is result.trace
+    assert result.trace["provenance"] == {
+        "producer": "rag-stack-evaluator", "trace_origin": "observed",
+    }
     assert [q["question_id"] for q in callbacks[0]["queries"]] == [
         "question-beta", "question-alpha",
     ]
@@ -50,6 +54,23 @@ def test_static_publication_maps_internal_ids_before_callback_and_preserves_iden
         question_ids=["question-alpha", "question-beta"],
     )
     assert payload["__execution_dag__"] is callbacks[0]
+
+
+def test_reconstructed_trace_is_distinguished_from_observed_publication(monkeypatch):
+    from rag_stack_evaluator.static_rag_evaluator import static_rag_evaluator as module
+
+    engine = object.__new__(StaticRAGEvaluatorQualityOnly)
+    run = SimpleNamespace(
+        quality={}, trace=None, node_lines={}, token_stats={},
+        previous_result=pd.DataFrame({"qid": ["question-alpha"]}),
+    )
+    monkeypatch.setattr(engine, "_run_pipeline", lambda *a, **kw: run)
+    monkeypatch.setattr(module, "build_static_execution_dag", lambda *a, **kw: {
+        "trace_v1": [calls(7)],
+    })
+    result = engine.evaluate({"_runtime": {"rag_ir_mode": "dynamic"}},
+                             on_trace_ready=lambda _: pytest.fail("Fallback is not observed"))
+    assert result["__execution_dag__"]["provenance"]["trace_origin"] == "reconstructed"
 
 
 @pytest.mark.parametrize("mapping", [

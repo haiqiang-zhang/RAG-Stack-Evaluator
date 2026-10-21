@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -49,6 +50,53 @@ def test_configure_vllm_worker_env_adds_env_bin_and_removes_hpcx_ucx():
 	assert "/opt/hpcx/ucx/lib" not in env["LD_LIBRARY_PATH"].split(os.pathsep)
 	assert "/usr/local/ucx/lib" not in env["LD_LIBRARY_PATH"].split(os.pathsep)
 	assert "/opt/hpcx/ompi/lib" in env["LD_LIBRARY_PATH"].split(os.pathsep)
+
+
+def test_worker_prioritizes_torch_cublas_pair_after_toolkit_configuration(tmp_path, monkeypatch):
+	from rag_stack_evaluator import vllm_env
+	wheel = tmp_path / "site-packages" / "nvidia" / "cublas" / "lib"
+	wheel.mkdir(parents=True)
+	for name in ("libcublas.so.12", "libcublasLt.so.12"):
+		(wheel / name).write_bytes(b"wheel library")
+	torch_dist = SimpleNamespace(requires=["nvidia-cublas-cu12==12.8.4.1; platform_system == 'Linux'"],
+		locate_file=lambda path: tmp_path / path)
+	cublas_dist = SimpleNamespace(files=[Path("nvidia/cublas/lib/libcublas.so.12")],
+		locate_file=lambda path: tmp_path / "site-packages" / path)
+	monkeypatch.setattr(vllm_env, "installed_torch_cuda_major", lambda: 12)
+	monkeypatch.setattr(vllm_env.metadata, "distribution",
+		lambda name: {"torch": torch_dist, "nvidia-cublas-cu12": cublas_dist}[name])
+	def toolkit(*, env, logger):
+		env["CUDA_HOME"] = "/toolkit"
+		env["PATH"] = "/toolkit/bin:" + env["PATH"]
+		env["LD_LIBRARY_PATH"] = "/toolkit/lib64:" + env["LD_LIBRARY_PATH"]
+	monkeypatch.setattr(vllm_env, "configure_cuda_toolkit_env", toolkit)
+	env = {"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/toolkit/lib64:" + str(wheel) + ":/usr/lib"}
+	configure_vllm_worker_env(env=env)
+	assert env["CUDA_HOME"] == "/toolkit"
+	assert env["PATH"].startswith("/toolkit/bin:")
+	assert env["LD_LIBRARY_PATH"].split(":")[0] == str(wheel)
+	assert "/toolkit/lib64" in env["LD_LIBRARY_PATH"].split(":")
+	before = env["LD_LIBRARY_PATH"]
+	vllm_env.ensure_torch_cublas_in_ld_library_path(env=env)
+	assert env["LD_LIBRARY_PATH"] == before
+	assert env["LD_LIBRARY_PATH"].split(":").count(str(wheel)) == 1
+
+
+@pytest.mark.parametrize("has_pair", [True, False])
+def test_torch_cublas_selection_requires_both_libraries(tmp_path, monkeypatch, has_pair):
+	from rag_stack_evaluator import vllm_env
+	bundled = tmp_path / "torch" / "lib"
+	bundled.mkdir(parents=True)
+	(bundled / "libcublas.so.12").touch()
+	if has_pair:
+		(bundled / "libcublasLt.so.12").touch()
+	monkeypatch.setattr(vllm_env, "installed_torch_cuda_major", lambda: 12)
+	monkeypatch.setattr(vllm_env.metadata, "distribution", lambda _: SimpleNamespace(
+		requires=[], locate_file=lambda path: tmp_path / path))
+	monkeypatch.setattr(vllm_env.sys, "prefix", str(tmp_path / "empty-env"))
+	env = {"LD_LIBRARY_PATH": "/toolkit/lib64"}
+	vllm_env.ensure_torch_cublas_in_ld_library_path(env=env)
+	assert env["LD_LIBRARY_PATH"] == (str(bundled) + ":/toolkit/lib64" if has_pair else "/toolkit/lib64")
 
 
 def test_cuda_major_is_derived_from_torch_wheel_suffix():

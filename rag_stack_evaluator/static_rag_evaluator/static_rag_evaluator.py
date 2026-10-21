@@ -148,7 +148,10 @@ def _publish_quality_trace(
 		question_ids = [mapping[qid] for qid in question_ids]
 	from rag_stack.rag_ir import make_quality_trace_envelope
 
-	envelope = make_quality_trace_envelope(trace, question_ids=question_ids)
+	envelope = make_quality_trace_envelope(
+		trace, question_ids=question_ids,
+		provenance={"producer": "rag-stack-evaluator", "trace_origin": "observed"},
+	)
 	if on_trace_ready is not None:
 		try:
 			on_trace_ready(envelope)
@@ -293,6 +296,7 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 					execution_dag = make_quality_trace_envelope(
 						traces,
 						question_ids=[str(qid) for qid in run.previous_result["qid"].tolist()],
+						provenance={"producer": "rag-stack-evaluator", "trace_origin": "reconstructed"},
 					)
 				else:
 					execution_dag = payload
@@ -810,6 +814,13 @@ class StaticRAGEvaluatorQualityOnly(BaseEvaluator):
 			nodes = []
 			for node_config in node_line["nodes"]:
 				node_dict = deepcopy(node_config)
+				if (config.get("eval_backend_setting") or {}).get("performance_only"):
+					# Trace-only previews and measured runs skip every scoring
+					# stage, including an explicit node-level judge strategy.
+					# Preserve serving parameters and the caller's config.
+					strategy = dict(node_dict.get("strategy") or {})
+					strategy["metrics"] = []
+					node_dict["strategy"] = strategy
 				if "strategy" not in node_dict:
 					node_dict["strategy"] = {
 						"metrics": [],

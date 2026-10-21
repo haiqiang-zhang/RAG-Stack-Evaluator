@@ -56,7 +56,8 @@ The required top-level evaluator fields are:
   empty list when the pipeline does not use a vector database;
 - `eval_backend_setting.metrics`: concrete metric names or mappings containing
   `metric_name` when quality scoring is enabled; measured performance-only calls
-  use `eval_backend_setting.performance_only: true` instead; and
+  and serving-only trace previews use `eval_backend_setting.performance_only: true`
+  instead; and
 - `corpus_runtime.chunker`: one concrete chunker mapping or `{}`.
 
 `pipeline_runtime` is optional and defaults to sequential execution. ReAct
@@ -169,6 +170,20 @@ This direct, config-less dataset manager requires a pre-chunked corpus and
 use the host-owned path in section 3. `metrics_override` changes scoring only.
 If a canonical trace is produced, `on_trace_ready` receives the same object
 returned as `result.trace`. Callback failures are advisory.
+
+Recorded traces carry `provenance.trace_origin: observed` and
+`provenance.producer: rag-stack-evaluator`. The legacy post-hoc fallback carries
+`trace_origin: reconstructed` and never invokes the observed-trace callback.
+Canonical shape alone does not establish an observed origin. Consumers such as
+CM Preview require an observed marker before reusing a saved trace; older
+unmarked traces require a fresh run for that workflow.
+
+For a serving-only preview, set `eval_backend_setting.performance_only: true`
+on a runtime copy and pass `metrics_override=[]`. The pipeline still executes
+its retrieval, fusion, and generation stages and records their real calls.
+Both final scoring and explicitly configured node-level metrics are disabled;
+empty metrics do not represent a quality score. This flag does not select the
+measured backend or change the deployment and generation parameters.
 
 The concrete `StaticRAGEvaluatorQualityOnly` class is also supported. Its
 `evaluate` method returns the legacy flat metric dict, with a canonical trace

@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from importlib import metadata
 from logging import Logger
 import os
+from pathlib import Path
+import re
 import sys
 from typing import MutableMapping, Optional
 
-from rag_stack_evaluator.cuda_toolkit import configure_cuda_toolkit_env
+from rag_stack_evaluator.cuda_toolkit import (
+    configure_cuda_toolkit_env,
+    installed_torch_cuda_major,
+)
 
 
 def _prepend_env_path(
@@ -101,6 +107,63 @@ def ensure_python_env_lib_in_ld_library_path(
         )
 
 
+def _torch_cublas_library_dir() -> Path | None:
+    """Locate PyTorch's paired cuBLAS libraries without importing CUDA code."""
+    major = installed_torch_cuda_major()
+    if major is None:
+        return None
+    try:
+        torch_dist = metadata.distribution("torch")
+    except metadata.PackageNotFoundError:
+        return None
+    names = (f"libcublas.so.{major}", f"libcublasLt.so.{major}")
+    candidates = [Path(torch_dist.locate_file("torch/lib"))]
+    has_dependency = False
+    for requirement in torch_dist.requires or []:
+        match = re.match(r"(nvidia-cublas(?:-cu\d+)?)(?=[\s;<>=!~\[]|$)", requirement)
+        if match is None:
+            continue
+        has_dependency = True
+        try:
+            distribution = metadata.distribution(match[1])
+        except metadata.PackageNotFoundError:
+            continue
+        candidates.extend(
+            Path(distribution.locate_file(path)).parent
+            for path in distribution.files or [] if Path(path).name == names[0]
+        )
+    if not has_dependency:
+        # Conda builds can bundle the pair in the environment instead of
+        # declaring an NVIDIA wheel dependency.
+        candidates.append(Path(sys.prefix) / "lib")
+    return next((path for path in candidates
+                 if all((path / name).is_file() for name in names)), None)
+
+
+def ensure_torch_cublas_in_ld_library_path(
+    env: Optional[MutableMapping[str, str]] = None,
+    logger: Optional[Logger] = None,
+) -> None:
+    """Keep spawned workers from mixing PyTorch cuBLAS with toolkit cuBLASLt.
+
+    CUDA_HOME still supplies nvcc, headers and JIT linker inputs. Runtime
+    loading must prefer both libraries from the installed PyTorch dependency.
+    Move an already-present directory forward too, so repeated calls converge.
+    """
+    library_dir = _torch_cublas_library_dir()
+    if library_dir is None:
+        return
+    target = os.environ if env is None else env
+    value = str(library_dir)
+    current = target.get("LD_LIBRARY_PATH", "")
+    parts = [part for part in current.split(os.pathsep) if part and part != value]
+    updated = os.pathsep.join([value, *parts])
+    if updated != current:
+        target["LD_LIBRARY_PATH"] = updated
+        if logger is not None:
+            logger.info("vLLM: prioritizing PyTorch cuBLAS pair at %s for worker subprocesses", value)
+
+
 def configure_vllm_worker_env(
     env: Optional[MutableMapping[str, str]] = None,
     logger: Optional[Logger] = None,
@@ -111,11 +174,13 @@ def configure_vllm_worker_env(
     ensure_python_env_bin_on_path(env=env, logger=logger)
     ensure_python_env_lib_in_ld_library_path(env=env, logger=logger)
     configure_cuda_toolkit_env(env=env, logger=logger)
+    ensure_torch_cublas_in_ld_library_path(env=env, logger=logger)
 
 
 __all__ = [
     "configure_vllm_worker_env",
     "ensure_python_env_bin_on_path",
     "ensure_python_env_lib_in_ld_library_path",
+    "ensure_torch_cublas_in_ld_library_path",
     "remove_external_ucx_from_ld_library_path",
 ]
